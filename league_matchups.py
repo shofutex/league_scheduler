@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 # Tool to select bye weeks and generate a fair schedule for a swim league
 # Developed with the help of ChatGPT--which seems to account for the complex mappings
 # It seems to work, but this is one of those scenarios where it's easy to double-check
