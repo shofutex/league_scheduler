@@ -8,6 +8,7 @@ league:
     Team 3: [2,1]
     Team 4: [3,4]
     Team 5: [4,3]
+  # Some teams may have weeks they *cannot* miss
   bye_restrictions:
     Team 1: [1,2]
   # Canonical base schedule for a five-team matchup with bye weeks
