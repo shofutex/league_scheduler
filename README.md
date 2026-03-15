@@ -7,7 +7,7 @@ ChatGPT hardcoded the team names and such so I edited it to work off league.yaml
 I also cleaned up the code so it's more readable
 
 ### Usage:
-Edit `league_example.yaml` and copy it into league.yaml
+Edit `league_example.yaml` and copy it into `league.yaml`
 ```bash
 $ ./league_matchups.py
 ```
