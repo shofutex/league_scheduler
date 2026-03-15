@@ -9,7 +9,7 @@ league:
     Team 4: [3,4]
     Team 5: [4,3]
   bye_restrictions:
-    Fair Oaks: [1,2]
+    Team 1: [1,2]
   # Canonical base schedule for a five-team matchup with bye weeks
   base_schedule:
     1: [["A", "B"], ["C", "D"]]
