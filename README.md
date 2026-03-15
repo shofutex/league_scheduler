@@ -9,6 +9,6 @@ I also cleaned up the code so it's more readable
 ### Usage:
 Edit `league_example.yaml` and copy it into league.yaml
 ```bash
-$ ./bye.py
+$ ./league_matchups.py
 ```
 
