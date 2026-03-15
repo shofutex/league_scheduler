@@ -1,0 +1,21 @@
+league:
+  teams: ["Team 1", "Team 2", "Team 3", "Team 4", "Team 5"]
+  weeks: [1,2,3,4,5]
+  # bye_preferences are the first and secon preferred week off
+  bye_preferences:
+    Team 1: [4,5]
+    Team 2: [3,4]
+    Team 3: [2,1]
+    Team 4: [3,4]
+    Team 5: [4,3]
+  bye_restrictions:
+    Fair Oaks: [1,2]
+  # Canonical base schedule for a five-team matchup with bye weeks
+  base_schedule:
+    1: [["A", "B"], ["C", "D"]]
+    2: [["A", "C"], ["D", "E"]]
+    3: [["A", "D"], ["B", "E"]]
+    4: [["A", "E"], ["B", "C"]]
+    5: [["B", "D"], ["C", "E"]]
+  # Labels for each of the five teams as represented above
+  labels: ["A", "B", "C", "D", "E"]
