@@ -13,7 +13,7 @@ Edit `league_example.yaml` and copy it into `league.yaml`
 ```bash
 $ ./league_matchups.py
 ```
-### Python
+### Rust
 
 The Rust version was imported into Claude and I worked with Claude to make a compiled application
 to run on a user's system. It can save and load the preferences as a JSON file (Claude said that 
