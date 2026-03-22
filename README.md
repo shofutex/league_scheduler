@@ -22,4 +22,4 @@ JSON is a better selection for Rust).
 #### Usage
 ```bash
 $ cargo run
-```bash
+```
