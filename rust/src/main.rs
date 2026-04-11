@@ -97,14 +97,17 @@ fn score_byes(ba: &ByeAssignment, prefs: &HashMap<String, [u32;2]>, teams: &[Str
             detail.insert(team.clone(), -1); // sentinel: excluded
             continue;
         }
-        let week = ba[team];
-        let s = match prefs.get(team) {
-            Some(&[f, _]) if week == f => 2,
-            Some(&[_, s]) if week == s => 1,
-            _ => 0,
-        };
-        score += s;
-        detail.insert(team.clone(), s);
+        
+        // A 6-team league doesn't get bye weeks, so ba may be empty
+        if let Some(&week) = ba.get(team) {
+            let s = match prefs.get(team) {
+                Some(&[f, _]) if week == f => 2,
+                Some(&[_, s]) if week == s => 1,
+                _ => 0,
+            };
+            score += s;
+            detail.insert(team.clone(), s);
+        }
     }
     (score, detail)
 }
@@ -123,8 +126,17 @@ fn assign_hosts(schedule: &Schedule, weeks: &[u32], teams: &[String]) -> Vec<Sch
             *counts.entry(host).or_insert(0) += 1;
             sched.get_mut(w).unwrap().push((host.to_string(),away.to_string()));
         }
-        if teams.iter().all(|t| counts.get(t.as_str()).copied().unwrap_or(0)==2) {
-            options.push(sched);
+
+        // If we have a 5-league team, then we can 2 hosts per team
+        if teams.len() == 5 {
+            if teams.iter().all(|t| counts.get(t.as_str()).copied().unwrap_or(0)==2) {
+                options.push(sched);
+            }
+        }
+        else { // otherwise, we have at least 2
+            if teams.iter().all(|t| counts.get(t.as_str()).copied().unwrap_or(0)>=2) {
+                options.push(sched);
+            }
         }
     }
     options
@@ -149,6 +161,9 @@ fn run_scheduler(config: &LeagueConfig) -> Result<Vec<Solution>, String> {
     let teams = &config.teams;
     let weeks = &config.weeks;
     let labels = &config.labels;
+
+    eprintln!("Starting the schedule generation...");
+
     if teams.len() < 2 { return Err("Need at least 2 teams.".into()); }
     if weeks.is_empty() { return Err("Need at least one week.".into()); }
     if labels.len() != teams.len() {
@@ -158,7 +173,18 @@ fn run_scheduler(config: &LeagueConfig) -> Result<Vec<Solution>, String> {
     let mut seen: HashSet<Vec<(u32,Vec<(String,String)>)>> = HashSet::new();
     let team_set: HashSet<&str> = teams.iter().map(|s|s.as_str()).collect();
 
+    eprintln!("Entering permutations step");
+
+    let mut numPerms = 0;
+
+    let totalPerms = (teams.iter().permutations(teams.len())).count();
+
+    eprintln!("Total number of permutations: {totalPerms}");
+    
     for perm in teams.iter().permutations(teams.len()) {
+        eprintln!("Permutation {numPerms}");
+        numPerms = numPerms + 1;
+        
         let mapping: HashMap<&str,&str> = labels.iter().zip(perm.iter()).map(|(l,t)|(l.as_str(),t.as_str())).collect();
         let mut schedule: Schedule = HashMap::new();
         let mut bye_assignment: ByeAssignment = HashMap::new();
@@ -174,12 +200,13 @@ fn run_scheduler(config: &LeagueConfig) -> Result<Vec<Solution>, String> {
             }
             schedule.insert(w, real_games);
             let sitters: Vec<_> = team_set.difference(&playing).copied().collect();
+
             if sitters.len()==1 { bye_assignment.insert(sitters[0].to_string(), w); }
         }
 
-        if !valid_bye_assignment(&bye_assignment, &config.bye_restrictions) { continue; }
+        if weeks.len() == 5 && !valid_bye_assignment(&bye_assignment, &config.bye_restrictions) { continue; }
         let host_options = assign_hosts(&schedule, weeks, teams);
-        if host_options.is_empty() { continue; }
+        if host_options.is_empty() { eprintln!("Empty hosts"); continue; }
         let (score, detail) = score_byes(&bye_assignment, &config.bye_preferences, teams, &config.score_excluded);
 
         for sched in host_options {
