@@ -11,18 +11,20 @@ JSON is a better selection for Rust).
 #### Usage
 I've updated everything so now it's available cross-platform through the github release. Getting it to run on MacOS is a bit difficult (you'll have to go through the steps to allow this untrusted binary to run), but it works.
 
-On Linux:
+##### On Linux:
 ```bash
 $ chmod u+x swim-scheduler-linux
 $ ./swim-scheduler-linux
 ```
-On Mac OS:
+##### On Mac OS:
 ```bash
 $ chmod u+x swim-scheduler-mac
 ```
 Then you can double-click on it.
 
-On Windows, you can just double-click swim-scheduler-windows.exe
+##### On Windows:
+
+You can just double-click swim-scheduler-windows.exe
 
 
 ### Python 
