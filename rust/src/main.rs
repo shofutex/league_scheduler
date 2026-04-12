@@ -9,10 +9,14 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
+static INTER: &[u8] = include_bytes!("../fonts/Inter-Regular.ttf");
+
 fn main() -> iced::Result {
     iced::application("Swim League Scheduler", SwimScheduler::update, SwimScheduler::view)
         .theme(|_| Theme::TokyoNight)
         .window_size((900.0, 700.0))
+        .font(INTER)
+        .default_font(iced::Font::with_name("Inter"))
         .run_with(SwimScheduler::new)
 }
 
@@ -619,7 +623,7 @@ impl SwimScheduler {
                 back,
                 Space::with_width(Length::Fill),
                 button(text("⬒ Load")).style(button::secondary).on_press(Message::LoadConfig),
-                button(text("⬇ Save")).style(button::secondary).on_press(Message::SaveConfig),
+                button(text("↓ Save")).style(button::secondary).on_press(Message::SaveConfig),
                 right,
             ].spacing(10).align_y(Alignment::Center)
         ).padding([12,20]).into()
