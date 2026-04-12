@@ -210,21 +210,8 @@ fn run_scheduler(config: &LeagueConfig) -> Result<Vec<Solution>, String> {
     let mut solutions: Vec<Solution> = Vec::new();
     let mut seen: HashSet<Vec<(u32,Vec<(String,String)>)>> = HashSet::new();
     let team_set: HashSet<&str> = teams.iter().map(|s|s.as_str()).collect();
-
-    eprintln!("Entering permutations step");
-
-    fn factorial(n: usize) -> usize { (1..=n).product() }
-
-    let mut numPerms = 0;
-
-    let totalPerms = factorial(teams.len());
-
-    eprintln!("Total number of permutations: {totalPerms}");
     
-    for perm in teams.iter().permutations(teams.len()) {
-        eprintln!("Permutation {numPerms}");
-        numPerms = numPerms + 1;
-        
+    for perm in teams.iter().permutations(teams.len()) {        
         let mapping: HashMap<&str,&str> = labels.iter().zip(perm.iter()).map(|(l,t)|(l.as_str(),t.as_str())).collect();
         let mut schedule: Schedule = HashMap::new();
         let mut bye_assignment: ByeAssignment = HashMap::new();
@@ -550,7 +537,7 @@ impl SwimScheduler {
 // ── View ──────────────────────────────────────────────────────────────────────
 
 impl SwimScheduler {
-    fn view(&self) -> Element<Message> {
+    fn view(&self) -> Element<'_, Message> {
         let content: Element<Message> = match self.current_step() {
             Step::Teams => self.view_teams(),
             Step::Weeks => self.view_weeks(),
@@ -572,7 +559,7 @@ impl SwimScheduler {
         .into()
     }
 
-    fn view_header(&self) -> Element<Message> {
+    fn view_header(&self) -> Element<'_, Message> {
         container(
             column![
                 text("Swim League Scheduler").size(28),
@@ -581,7 +568,7 @@ impl SwimScheduler {
         ).padding(20).into()
     }
 
-    fn view_breadcrumb(&self) -> Element<Message> {
+    fn view_breadcrumb(&self) -> Element<'_, Message> {
         let current = self.current_step();
         let items: Vec<Element<Message>> = Step::all().iter().enumerate().map(|(i, s)| {
             let label = match s {
@@ -601,7 +588,7 @@ impl SwimScheduler {
         container(row(items).spacing(4).align_y(Alignment::Center)).padding([6,20]).into()
     }
 
-    fn view_nav(&self) -> Element<Message> {
+    fn view_nav(&self) -> Element<'_, Message> {
         let steps = Step::all();
         let pos = steps.iter().position(|s| s == self.current_step()).unwrap_or(0);
 
@@ -629,7 +616,7 @@ impl SwimScheduler {
         ).padding([12,20]).into()
     }
 
-    fn view_teams(&self) -> Element<Message> {
+    fn view_teams(&self) -> Element<'_, Message> {
         let mut list = column![text("Teams").size(16)].spacing(8);
         for (i, team) in self.config.teams.iter().enumerate() {
             let c = team_color(&self.config.teams, team);
@@ -655,7 +642,7 @@ impl SwimScheduler {
         ).height(Length::Fill).into()
     }
 
-    fn view_weeks(&self) -> Element<Message> {
+    fn view_weeks(&self) -> Element<'_, Message> {
         let err: Element<Message> = if let Some(e) = &self.weeks_error {
             text(e).color(color!(0xff6666)).into()
         } else { Space::with_height(0).into() };
@@ -674,7 +661,7 @@ impl SwimScheduler {
         ].spacing(16)).padding(20).width(Length::Fill)).height(Length::Fill).into()
     }
 
-    fn view_base_schedule(&self) -> Element<Message> {
+    fn view_base_schedule(&self) -> Element<'_, Message> {
         let mut sorted_weeks = self.config.weeks.clone(); sorted_weeks.sort();
         let mut weeks_col = column![].spacing(10);
         for w in &sorted_weeks {
@@ -706,7 +693,7 @@ impl SwimScheduler {
         ].spacing(16)).padding(20).width(Length::Fill)).height(Length::Fill).into()
     }
 
-    fn view_bye_preferences(&self) -> Element<Message> {
+    fn view_bye_preferences(&self) -> Element<'_, Message> {
         let mut rows = column![
             text("Enter each team's 1st and 2nd preferred bye week. Leave blank for no preference.").size(13)
         ].spacing(10);
@@ -730,7 +717,7 @@ impl SwimScheduler {
         scrollable(container(rows).padding(20).width(Length::Fill)).height(Length::Fill).into()
     }
 
-    fn view_bye_restrictions(&self) -> Element<Message> {
+    fn view_bye_restrictions(&self) -> Element<'_, Message> {
         let mut sorted_weeks = self.config.weeks.clone(); sorted_weeks.sort();
 
         let mut header = row![Space::with_width(180)].spacing(0);
@@ -760,7 +747,7 @@ impl SwimScheduler {
     }
 
 
-    fn view_score_exclusions(&self) -> Element<Message> {
+    fn view_score_exclusions(&self) -> Element<'_, Message> {
         let mut rows = column![
             text("Exclude teams from the fairness score entirely.").size(13),
             text("Checked teams will not affect which schedule ranks highest.").size(12),
@@ -781,7 +768,7 @@ impl SwimScheduler {
         scrollable(container(rows).padding(20).width(Length::Fill)).height(Length::Fill).into()
     }
 
-    fn view_results(&self) -> Element<Message> {
+    fn view_results(&self) -> Element<'_, Message> {
         if let Some(e) = &self.run_error {
             return container(column![text("Error:").size(16), text(e).color(color!(0xff6666))].spacing(10)).padding(20).into();
         }
