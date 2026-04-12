@@ -4,3 +4,4 @@
 4. Need to add a progress bar #Not needed
 5. Need to add 6-team league schedule by default if there are 6 teams
 6. Need to add performance improvements. 6-team version takes a long time for all 720 permutations. Need to see if they all have the same fairness score. # This is not needed. Runs at a reasonable pace without debugging
+7. Need to add an export to CSV feature for the results
