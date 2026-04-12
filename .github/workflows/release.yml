@@ -34,6 +34,16 @@ jobs:
         working-directory: rust
         run: cargo build --release --target ${{ matrix.target }}
 
+      - name: Rename binary
+        run: cp rust/target/${{ matrix.target }}/release/${{ matrix.binary }} ${{ matrix.asset_name }}
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: ${{ matrix.asset_name }}
+
+
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
