@@ -9,7 +9,7 @@ to run on a user's system. It can save and load the preferences as a JSON file (
 JSON is a better selection for Rust).
 
 #### Usage
-I've updated everything so now it's available cross-platform through the github release. Getting it to run on MacOS is a bit difficult, but it works.
+I've updated everything so now it's available cross-platform through the github release. Getting it to run on MacOS is a bit difficult (you'll have to go through the steps to allow this untrusted binary to run), but it works.
 
 On Linux:
 ```bash
@@ -19,8 +19,8 @@ $ ./swim-scheduler-linux
 On Mac OS:
 ```bash
 $ chmod u+x swim-scheduler-mac
-$ ./swim-scheduler-mac
 ```
+Then you can double-click on it.
 
 On Windows, you can just double-click swim-scheduler-windows.exe
 
