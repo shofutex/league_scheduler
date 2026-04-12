@@ -5,6 +5,7 @@ Tool to select bye weeks and generate a fair schdule for a 5- or 6-team swim lea
 ### Rust
 
 The Python version was imported into Claude and I worked with Claude to make a compiled application
+using the [iced framework](https://iced.rs/) so that it can generate a cross-platform GUI
 to run on a user's system. It can save and load the preferences as a JSON file (Claude said that 
 JSON is a better selection for Rust).
 
