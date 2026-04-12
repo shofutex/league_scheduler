@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
@@ -12,13 +15,16 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            binary: swim-scheduler-linux
+            binary: swim-scheduler
+            asset_name: swim-scheduler-linux
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             binary: swim-scheduler.exe
+            asset_name: swim-scheduler-windows.exe
           - os: macos-latest
             target: aarch64-apple-darwin
-            binary: swim-scheduler-mac
+            binary: swim-scheduler
+            asset_name: swim-scheduler-mac
 
     runs-on: ${{ matrix.os }}
 
@@ -49,23 +55,13 @@ jobs:
           name: ${{ matrix.target }}
           path: ${{ matrix.asset_name }}
 
-
-      - name: Upload binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.target }}
-          path: rust/target/${{ matrix.target }}/release/${{ matrix.binary }}
-
   release:
     needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            x86_64-unknown-linux-gnu/swim-scheduler-linux
-            x86_64-pc-windows-msvc/swim-scheduler.exe
-            aarch64-apple-darwin/swim-scheduler-mac
