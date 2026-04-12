@@ -127,16 +127,14 @@ fn assign_hosts(schedule: &Schedule, weeks: &[u32], teams: &[String]) -> Vec<Sch
             sched.get_mut(w).unwrap().push((host.to_string(),away.to_string()));
         }
 
-        // If we have a 5-league team, then we can 2 hosts per team
-        if teams.len() == 5 {
-            if teams.iter().all(|t| counts.get(t.as_str()).copied().unwrap_or(0)==2) {
-                options.push(sched);
-            }
-        }
-        else { // otherwise, we have at least 2
-            if teams.iter().all(|t| counts.get(t.as_str()).copied().unwrap_or(0)>=2) {
-                options.push(sched);
-            }
+        let min_hosts = (games.len()) / teams.len();
+        let max_hosts = min_hosts + 1;
+
+        if teams.iter().all(|t| {
+            let c = counts.get(t.as_str()).copied().unwrap_or(0);
+            c >= min_hosts as u32 && c <= max_hosts as u32
+        }) {
+            options.push(sched);
         }
     }
     options
@@ -175,17 +173,21 @@ fn run_scheduler(config: &LeagueConfig) -> Result<Vec<Solution>, String> {
 
     eprintln!("Entering permutations step");
 
+    fn factorial(n: usize) -> usize { (1..=n).product() }
+
     let mut numPerms = 0;
 
-    let totalPerms = (teams.iter().permutations(teams.len())).count();
+    let totalPerms = factorial(teams.len());
 
     eprintln!("Total number of permutations: {totalPerms}");
     
-    for perm in teams.iter().permutations(teams.len()) {
+    //for perm in teams.iter().permutations(teams.len()) {
+    for perm in teams[1..].iter().permutations(teams.len() - 1) {
+        let full_perm: Vec<_> = std::iter::once(&teams[0]).chain(perm).collect();
         eprintln!("Permutation {numPerms}");
         numPerms = numPerms + 1;
         
-        let mapping: HashMap<&str,&str> = labels.iter().zip(perm.iter()).map(|(l,t)|(l.as_str(),t.as_str())).collect();
+        let mapping: HashMap<&str,&str> = labels.iter().zip(full_perm.iter()).map(|(l,t)|(l.as_str(),t.as_str())).collect();
         let mut schedule: Schedule = HashMap::new();
         let mut bye_assignment: ByeAssignment = HashMap::new();
 
