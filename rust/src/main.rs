@@ -571,7 +571,7 @@ impl SwimScheduler {
     fn view_header(&self) -> Element<Message> {
         container(
             column![
-                text("🏊 Swim League Scheduler").size(28),
+                text("Swim League Scheduler").size(28),
                 text(self.current_step().title()).size(14),
             ].spacing(4)
         ).padding(20).into()
@@ -618,8 +618,8 @@ impl SwimScheduler {
             row![
                 back,
                 Space::with_width(Length::Fill),
-                button(text("📂 Load")).style(button::secondary).on_press(Message::LoadConfig),
-                button(text("💾 Save")).style(button::secondary).on_press(Message::SaveConfig),
+                button(text("⬒ Load")).style(button::secondary).on_press(Message::LoadConfig),
+                button(text("⬇ Save")).style(button::secondary).on_press(Message::SaveConfig),
                 right,
             ].spacing(10).align_y(Alignment::Center)
         ).padding([12,20]).into()
