@@ -117,25 +117,61 @@ fn assign_hosts(schedule: &Schedule, weeks: &[u32], teams: &[String]) -> Vec<Sch
         .flat_map(|&w| schedule[&w].iter().map(move |(a,b)| (w,(a.clone(),b.clone()))))
         .collect();
     let n = games.len();
+    let min_hosts = n / teams.len();
+    let max_hosts = min_hosts + 1;
+
+    // For each team, precompute a bitmask of which game indices have them as t1 or t2
+    let team_masks: Vec<(u64, u64)> = teams.iter().map(|t| {
+        let t1_mask = games.iter().enumerate()
+            .filter(|(_, (_, (a, _)))| a == t)
+            .fold(0u64, |acc, (i, _)| acc | (1 << i));
+        let t2_mask = games.iter().enumerate()
+            .filter(|(_, (_, (_, b)))| b == t)
+            .fold(0u64, |acc, (i, _)| acc | (1 << i));
+        (t1_mask, t2_mask)
+    }).collect();
+
     let mut options = Vec::new();
-    for bits in 0u64..(1u64 << n) {
-        let mut counts: HashMap<&str,u32> = HashMap::new();
-        let mut sched: Schedule = weeks.iter().map(|&w| (w,vec![])).collect();
-        for (i,(w,(t1,t2))) in games.iter().enumerate() {
-            let (host,away) = if (bits>>i)&1==0 { (t1.as_str(),t2.as_str()) } else { (t2.as_str(),t1.as_str()) };
-            *counts.entry(host).or_insert(0) += 1;
-            sched.get_mut(w).unwrap().push((host.to_string(),away.to_string()));
+    'bits: for bits in 0u64..(1u64 << n) {
+        // Check counts via bitmask before building anything
+        for (t1_mask, t2_mask) in &team_masks {
+            // team hosts when it's t1 and bit=0, or t2 and bit=1
+            let hosted = ((!bits & t1_mask) | (bits & t2_mask)).count_ones() as usize;
+            if hosted < min_hosts || hosted > max_hosts { continue 'bits; }
         }
 
-        let min_hosts = (games.len()) / teams.len();
-        let max_hosts = min_hosts + 1;
-
-        if teams.iter().all(|t| {
-            let c = counts.get(t.as_str()).copied().unwrap_or(0);
-            c >= min_hosts as u32 && c <= max_hosts as u32
-        }) {
-            options.push(sched);
+        // Build schedule only for bitmasks that pass the count check
+        let mut sched: Schedule = weeks.iter().map(|&w| (w, vec![])).collect();
+        for (i, (w, (t1, t2))) in games.iter().enumerate() {
+            let (host, away) = if (bits >> i) & 1 == 0 { (t1.as_str(), t2.as_str()) } else { (t2.as_str(), t1.as_str()) };
+            sched.get_mut(w).unwrap().push((host.to_string(), away.to_string()));
         }
+
+        // Reject any assignment where a team hosts 3+ consecutive weeks
+        let no_long_streak = {
+            let mut ok = true;
+            'outer: for team in teams {
+                let mut host_weeks: Vec<u32> = weeks.iter()
+                    .filter(|&&w| sched[&w].iter().any(|(h, _)| h == team))
+                    .copied()
+                    .collect();
+                host_weeks.sort_unstable();
+                let mut streak = 1u32;
+                for pair in host_weeks.windows(2) {
+                    if pair[1] == pair[0] + 1 {
+                        streak += 1;
+                        if streak >= 3 {
+                            ok = false;
+                            break 'outer;
+                        }
+                    } else {
+                        streak = 1;
+                    }
+                }
+            }
+            ok
+        };
+        if no_long_streak { options.push(sched); }
     }
     options
 }
@@ -181,13 +217,11 @@ fn run_scheduler(config: &LeagueConfig) -> Result<Vec<Solution>, String> {
 
     eprintln!("Total number of permutations: {totalPerms}");
     
-    //for perm in teams.iter().permutations(teams.len()) {
-    for perm in teams[1..].iter().permutations(teams.len() - 1) {
-        let full_perm: Vec<_> = std::iter::once(&teams[0]).chain(perm).collect();
+    for perm in teams.iter().permutations(teams.len()) {
         eprintln!("Permutation {numPerms}");
         numPerms = numPerms + 1;
         
-        let mapping: HashMap<&str,&str> = labels.iter().zip(full_perm.iter()).map(|(l,t)|(l.as_str(),t.as_str())).collect();
+        let mapping: HashMap<&str,&str> = labels.iter().zip(perm.iter()).map(|(l,t)|(l.as_str(),t.as_str())).collect();
         let mut schedule: Schedule = HashMap::new();
         let mut bye_assignment: ByeAssignment = HashMap::new();
 
