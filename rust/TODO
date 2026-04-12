@@ -1,5 +1,6 @@
 1. Need to document this thing so I understand what Claude chose to do and why
-2. The 6-week version does not work. Need to figure out why. #This is complete
+2. The 6-team version does not work. Need to figure out why. #This is complete
 3. Need to set icons for the save/load buttons
 4. Need to add a progress bar
 5. Need to add 6-team league schedule by default if there are 6 teams
+6. Need to add performance improvements. 6-team version takes a long time for all 720 permutations. Need to see if they all have the same fairness score.
