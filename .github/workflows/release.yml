@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            binary: swim-scheduler
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary: swim-scheduler.exe
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            binary: swim-scheduler
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build
+        workind-directory: rust
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: rust/target/${{ matrix.target }}/release/${{ matrix.binary }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            x86_64-unknown-linux-gnu/swim-scheduler
+            x86_64-pc-windows-msvc/swim-scheduler.exe
+            aarch64-apple-darwin/swim-scheduler
