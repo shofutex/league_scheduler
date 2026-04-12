@@ -31,7 +31,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Build
-        workind-directory: rust
+        working-directory: rust
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Upload binary
