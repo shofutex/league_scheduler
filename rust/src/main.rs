@@ -200,8 +200,6 @@ fn run_scheduler(config: &LeagueConfig) -> Result<Vec<Solution>, String> {
     let weeks = &config.weeks;
     let labels = &config.labels;
 
-    eprintln!("Starting the schedule generation...");
-
     if teams.len() < 2 { return Err("Need at least 2 teams.".into()); }
     if weeks.is_empty() { return Err("Need at least one week.".into()); }
     if labels.len() != teams.len() {
