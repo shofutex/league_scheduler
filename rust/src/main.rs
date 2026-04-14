@@ -1,12 +1,18 @@
 //! Swim League Scheduler — iced 0.13
 //! Wizard: Teams → Weeks → Base Schedule → Bye Preferences → Bye Restrictions → Results
 
+mod config;
+
+use crate::config::LeagueConfig;
+use crate::config::default_5team_schedule;
+use crate::config::default_6team_schedule;
+
 use iced::widget::{
     button, checkbox, column, container, horizontal_rule, row, scrollable, text, text_input, Space,
 };
 use iced::{color, Alignment, Color, Element, Length, Task, Theme};
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
+//use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
 static INTER: &[u8] = include_bytes!("../fonts/Inter-Regular.ttf");
@@ -20,53 +26,7 @@ fn main() -> iced::Result {
         .run_with(SwimScheduler::new)
 }
 
-// ── Persisted config ──────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct LeagueConfig {
-    teams: Vec<String>,
-    weeks: Vec<u32>,
-    labels: Vec<String>,
-    base_schedule: HashMap<u32, Vec<[String; 2]>>,
-    bye_preferences: HashMap<String, [u32; 2]>,
-    bye_restrictions: HashMap<String, Vec<u32>>,
-    #[serde(default)]
-    score_excluded: Vec<String>,
-}
-
-impl Default for LeagueConfig {
-    fn default() -> Self {
-        Self {
-            teams: vec![],
-            weeks: vec![1, 2, 3, 4, 5],
-            labels: vec!["A","B","C","D","E"].into_iter().map(String::from).collect(),
-            base_schedule: default_5team_schedule(),
-            bye_preferences: HashMap::new(),
-            bye_restrictions: HashMap::new(),
-            score_excluded: vec![],
-        }
-    }
-}
-
-fn default_5team_schedule() -> HashMap<u32, Vec<[String; 2]>> {
-    let mut m = HashMap::new();
-    m.insert(1, vec![["A","B"],["C","D"]]);
-    m.insert(2, vec![["A","C"],["D","E"]]);
-    m.insert(3, vec![["A","D"],["B","E"]]);
-    m.insert(4, vec![["A","E"],["B","C"]]);
-    m.insert(5, vec![["B","D"],["C","E"]]);
-    m.into_iter().map(|(k,v)| (k, v.into_iter().map(|[a,b]| [a.into(),b.into()]).collect())).collect()
-}
-
-fn default_6team_schedule() -> HashMap<u32, Vec<[String; 2]>> {
-    let mut m: HashMap<u32, Vec<[&str;2]>> = HashMap::new();
-    m.insert(1, vec![["A","B"],["C","F"],["D","E"]]);
-    m.insert(2, vec![["A","C"],["B","E"],["D","F"]]);
-    m.insert(3, vec![["A","D"],["B","F"],["C","E"]]);
-    m.insert(4, vec![["A","E"],["B","C"],["D","F"]]);
-    m.insert(5, vec![["A","F"],["B","D"],["C","E"]]);
-    m.into_iter().map(|(k,v)| (k, v.into_iter().map(|[a,b]| [a.into(),b.into()]).collect())).collect()
-}
 
 // ── Scheduling ────────────────────────────────────────────────────────────────
 
