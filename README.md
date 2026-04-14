@@ -42,7 +42,7 @@ for the 6-team schedules.
 - Only 5-weeks have been tested, as the use-cases this was developed for are only 5-week long summer swim schedules
 - 6-team schedules can take a significant number of seconds to run (there are 720 permutations to test for the 6-team/5-week schedule).
 
-I need to set up a mechanism for exporting the findings.
+I need to set up a mechanism for exporting the findings to CSV.
 
 ### Python 
 Developed with the help of ChatGPT--which seems to account for the complex mappings.
