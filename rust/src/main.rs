@@ -3,6 +3,7 @@
 
 mod config;
 
+// Make sure we can get the items we need from config.rs
 use crate::config::LeagueConfig;
 use crate::config::default_5team_schedule;
 use crate::config::default_6team_schedule;
@@ -12,7 +13,6 @@ use iced::widget::{
 };
 use iced::{color, Alignment, Color, Element, Length, Task, Theme};
 use itertools::Itertools;
-//use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
 static INTER: &[u8] = include_bytes!("../fonts/Inter-Regular.ttf");
