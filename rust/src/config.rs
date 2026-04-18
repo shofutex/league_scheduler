@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap};
+use iced::{Color};
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LeagueConfig {
@@ -47,4 +49,22 @@ pub fn default_6team_schedule() -> HashMap<u32, Vec<[String; 2]>> {
     m.insert(4, vec![["A","E"],["B","C"],["D","F"]]);
     m.insert(5, vec![["A","F"],["B","D"],["C","E"]]);
     m.into_iter().map(|(k,v)| (k, v.into_iter().map(|[a,b]| [a.into(),b.into()]).collect())).collect()
+}
+
+// ── Team colors ───────────────────────────────────────────────────────────────
+
+const TEAM_COLORS: &[Color] = &[
+    Color { r: 0.37, g: 0.70, b: 0.96, a: 1.0 }, // blue
+    Color { r: 0.55, g: 0.91, b: 0.64, a: 1.0 }, // green
+    Color { r: 1.00, g: 0.72, b: 0.42, a: 1.0 }, // orange
+    Color { r: 0.90, g: 0.50, b: 0.75, a: 1.0 }, // pink
+    Color { r: 0.70, g: 0.60, b: 0.95, a: 1.0 }, // purple
+    Color { r: 0.45, g: 0.88, b: 0.85, a: 1.0 }, // teal
+    Color { r: 0.95, g: 0.55, b: 0.55, a: 1.0 }, // red
+    Color { r: 0.95, g: 0.90, b: 0.45, a: 1.0 }, // yellow
+];
+
+pub fn team_color(teams: &[String], team: &str) -> Color {
+    let idx = teams.iter().position(|t| t == team).unwrap_or(0);
+    TEAM_COLORS[idx % TEAM_COLORS.len()]
 }

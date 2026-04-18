@@ -3,19 +3,23 @@
 
 mod config;
 mod scheduler;
+mod message;
 
 // Make sure we can get the items we need from config.rs
 use crate::config::LeagueConfig;
 use crate::config::default_5team_schedule;
 use crate::config::default_6team_schedule;
+use crate::config::team_color;
 
 use crate::scheduler::Solution;
 use crate::scheduler::run_scheduler;
 
+use crate::message::Message;
+
 use iced::widget::{
     button, checkbox, column, container, horizontal_rule, row, scrollable, text, text_input, Space,
 };
-use iced::{color, Alignment, Color, Element, Length, Task, Theme};
+use iced::{color, Alignment, Element, Length, Task, Theme};
 use std::collections::{HashMap};
 
 static INTER: &[u8] = include_bytes!("../fonts/Inter-Regular.ttf");
@@ -33,23 +37,7 @@ fn main() -> iced::Result {
 
 
 
-// ── Team colors ───────────────────────────────────────────────────────────────
 
-const TEAM_COLORS: &[Color] = &[
-    Color { r: 0.37, g: 0.70, b: 0.96, a: 1.0 }, // blue
-    Color { r: 0.55, g: 0.91, b: 0.64, a: 1.0 }, // green
-    Color { r: 1.00, g: 0.72, b: 0.42, a: 1.0 }, // orange
-    Color { r: 0.90, g: 0.50, b: 0.75, a: 1.0 }, // pink
-    Color { r: 0.70, g: 0.60, b: 0.95, a: 1.0 }, // purple
-    Color { r: 0.45, g: 0.88, b: 0.85, a: 1.0 }, // teal
-    Color { r: 0.95, g: 0.55, b: 0.55, a: 1.0 }, // red
-    Color { r: 0.95, g: 0.90, b: 0.45, a: 1.0 }, // yellow
-];
-
-fn team_color(teams: &[String], team: &str) -> Color {
-    let idx = teams.iter().position(|t| t == team).unwrap_or(0);
-    TEAM_COLORS[idx % TEAM_COLORS.len()]
-}
 
 // ── Wizard steps ──────────────────────────────────────────────────────────────
 
@@ -119,23 +107,7 @@ fn schedule_to_inputs(bs: &HashMap<u32, Vec<[String;2]>>) -> HashMap<u32, String
     }).collect()
 }
 
-// ── Messages ──────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone)]
-enum Message {
-    GoTo(Step), Next, Back,
-    NewTeamNameChanged(String), AddTeam, RemoveTeam(usize),
-    SaveConfig, LoadConfig,
-    ConfigSaved(Result<(), String>), ConfigLoaded(Result<LeagueConfig, String>),
-    WeeksInputChanged(String), ApplyWeeks,
-    BaseScheduleInputChanged(u32, String), ApplyBaseSchedule,
-    UseDefault5Team, UseDefault6Team,
-    PrefChanged(String, usize, String),
-    ToggleRestriction(String, u32),
-    ToggleExclusion(String),
-    RunScheduler, SelectRank(usize),
-    ExportResults, ExportDone(Result<(), String>),
-}
 
 // ── Update ────────────────────────────────────────────────────────────────────
 
