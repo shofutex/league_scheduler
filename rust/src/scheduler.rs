@@ -189,3 +189,4 @@ pub fn run_scheduler(config: &LeagueConfig) -> Result<Vec<Solution>, String> {
     solutions.sort_by(|a,b| (b.score,-b.penalty).cmp(&(a.score,-a.penalty)));
     Ok(solutions.into_iter().take(5).enumerate().map(|(i,mut s)| { s.rank=i+1; s }).collect())
 }
+
