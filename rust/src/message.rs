@@ -1,6 +1,6 @@
 // ── Messages ──────────────────────────────────────────────────────────────────
 use crate::config::LeagueConfig;
-use crate::Step;
+use crate::state::Step;
 
 #[derive(Debug, Clone)]
 pub enum Message {

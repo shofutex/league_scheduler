@@ -1,9 +1,9 @@
 // ── Update ────────────────────────────────────────────────────────────────────
 use iced::Task;
 
-use crate::SwimScheduler;
+use crate::state::SwimScheduler;
 use crate::message::Message;
-use crate::Step;
+use crate::state::Step;
 use crate::schedule_to_inputs;
 use crate::scheduler::run_scheduler;
 
