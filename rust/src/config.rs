@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap};
 use iced::{Color};
 
+use crate::state::SwimScheduler;
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LeagueConfig {
@@ -50,6 +52,41 @@ pub fn default_6team_schedule() -> HashMap<u32, Vec<[String; 2]>> {
     m.insert(5, vec![["A","F"],["B","D"],["C","E"]]);
     m.into_iter().map(|(k,v)| (k, v.into_iter().map(|[a,b]| [a.into(),b.into()]).collect())).collect()
 }
+
+pub fn schedule_to_inputs(bs: &HashMap<u32, Vec<[String;2]>>) -> HashMap<u32, String> {
+    bs.iter().map(|(&w, games)| {
+        (w, games.iter().map(|[a,b]| format!("{} vs {}", a, b)).collect::<Vec<_>>().join(", "))
+    }).collect()
+}
+
+// ── Sync helpers ──────────────────────────────────────────────────────────────
+
+impl SwimScheduler {
+    pub fn sync_labels(&mut self) {
+        let chars = ['A','B','C','D','E','F','G','H'];
+        self.config.labels = chars[..self.config.teams.len().min(chars.len())].iter().map(|c| c.to_string()).collect();
+    }
+    pub fn sync_base_schedule_inputs(&mut self) {
+        self.base_schedule_inputs = schedule_to_inputs(&self.config.base_schedule);
+    }
+    pub fn parse_base_schedule(&self) -> Result<HashMap<u32, Vec<[String;2]>>, String> {
+        let mut result = HashMap::new();
+        for (&w, raw) in &self.base_schedule_inputs {
+            let matchups: Result<Vec<[String;2]>,String> = raw.split(',')
+                .filter(|s| !s.trim().is_empty())
+                .map(|m| {
+                    let parts: Vec<&str> = m.split("vs").map(|s| s.trim()).collect();
+                    if parts.len()!=2 || parts[0].is_empty() || parts[1].is_empty() {
+                        Err(format!("Invalid matchup '{}' in week {}", m.trim(), w))
+                    } else { Ok([parts[0].to_string(), parts[1].to_string()]) }
+                }).collect();
+            result.insert(w, matchups?);
+        }
+        Ok(result)
+    }
+}
+
+
 
 // ── Team colors ───────────────────────────────────────────────────────────────
 

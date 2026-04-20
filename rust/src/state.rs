@@ -1,7 +1,7 @@
 
 use crate::config::LeagueConfig;
 
-use crate::schedule_to_inputs;
+use crate::config::schedule_to_inputs;
 
 use crate::scheduler::Solution;
 

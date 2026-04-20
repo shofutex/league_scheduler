@@ -4,7 +4,7 @@ use iced::Task;
 use crate::state::SwimScheduler;
 use crate::message::Message;
 use crate::state::Step;
-use crate::schedule_to_inputs;
+use crate::config::schedule_to_inputs;
 use crate::scheduler::run_scheduler;
 
 
