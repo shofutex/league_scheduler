@@ -56,16 +56,6 @@ fn score_byes(
 }
 
 // ── Structural host assignment ────────────────────────────────────────────────
-//
-// Works on label indices (0..n_labels) rather than team names. This lets us
-// enumerate all valid host-bit patterns once on the base schedule's structure
-// and reuse the result across every permutation, instead of re-running the
-// full bitmask search inside each permutation iteration.
-//
-// games_struct: flat list of (week_idx, label_t1, label_t2) sorted for
-//               deterministic bit ordering.
-// n_teams:      used to enforce the balanced-hosting constraint.
-// n_weeks:      length of the sorted week list (weeks must be pre-sorted).
 
 fn structural_host_bits(
     games_struct: &[(usize, usize, usize)],
@@ -76,7 +66,6 @@ fn structural_host_bits(
     let min_hosts = n / n_teams;
     let max_hosts = min_hosts + 1;
 
-    // Per-label bitmasks: which game indices have this label as t1 / t2.
     let mut t1_masks = vec![0u64; n_teams];
     let mut t2_masks = vec![0u64; n_teams];
     for (i, &(_, t1, t2)) in games_struct.iter().enumerate() {
@@ -84,8 +73,6 @@ fn structural_host_bits(
         t2_masks[t2] |= 1 << i;
     }
 
-    // Per-label, per-week participation masks for the streak check.
-    // streak_masks[label][week_idx] = bitmask of game indices in that week.
     let mut streak_masks = vec![vec![0u64; n_weeks]; n_teams];
     for (i, &(wi, t1, t2)) in games_struct.iter().enumerate() {
         streak_masks[t1][wi] |= 1 << i;
@@ -95,7 +82,6 @@ fn structural_host_bits(
     let mut valid_bits = Vec::new();
 
     'bits: for bits in 0u64..(1u64 << n) {
-        // 1. Balanced-host count check — pure bitmask arithmetic, no allocation.
         for label in 0..n_teams {
             let hosted =
                 ((!bits & t1_masks[label]) | (bits & t2_masks[label])).count_ones() as usize;
@@ -104,9 +90,6 @@ fn structural_host_bits(
             }
         }
 
-        // 2. Consecutive-hosting streak check — also bitmask, no HashMap needed.
-        //    A label hosts in week wi when at least one of its games that week
-        //    has it assigned as host (bit=0 → t1 hosts; bit=1 → t2 hosts).
         for label in 0..n_teams {
             let mut streak = 0u32;
             for wi in 0..n_weeks {
@@ -150,7 +133,15 @@ fn host_streak_penalty(schedule: &Schedule, weeks: &[u32], teams: &[String]) -> 
     penalty
 }
 
-pub fn run_scheduler(config: &LeagueConfig) -> Result<Vec<Solution>, String> {
+/// Run the scheduler, calling `progress_cb` with a value in [0.0, 1.0] as work proceeds.
+/// The callback is called from rayon worker threads and must be Send + Sync.
+pub fn run_scheduler_with_progress<F>(
+    config: &LeagueConfig,
+    progress_cb: F,
+) -> Result<Vec<Solution>, String>
+where
+    F: FnMut(f32) + Send,
+{
     let teams = &config.teams;
     let weeks = &config.weeks;
     let labels = &config.labels;
@@ -169,7 +160,6 @@ pub fn run_scheduler(config: &LeagueConfig) -> Result<Vec<Solution>, String> {
         ));
     }
 
-    // Stable week ordering so array indices are consistent everywhere.
     let mut sorted_weeks = weeks.clone();
     sorted_weeks.sort_unstable();
     let week_index: HashMap<u32, usize> =
@@ -179,8 +169,6 @@ pub fn run_scheduler(config: &LeagueConfig) -> Result<Vec<Solution>, String> {
     let label_index: HashMap<&str, usize> =
         labels.iter().enumerate().map(|(i, l)| (l.as_str(), i)).collect();
 
-    // Convert base_schedule to structural form: (week_idx, label_t1, label_t2).
-    // Also record which label index has the bye each week.
     let mut games_struct: Vec<(usize, usize, usize)> = Vec::new();
     let mut bye_label_per_week: Vec<Option<usize>> = vec![None; n_weeks];
 
@@ -200,29 +188,37 @@ pub fn run_scheduler(config: &LeagueConfig) -> Result<Vec<Solution>, String> {
         }
     }
 
-    // Sort for deterministic bit ordering across calls.
     games_struct.sort_unstable();
 
-    // ── KEY OPTIMISATION ─────────────────────────────────────────────────────
-    // Enumerate all valid host-bit patterns once on the structural (label-index)
-    // representation. Previously assign_hosts() was called inside the permutation
-    // loop, redoing this O(2^n_games) search for every permutation. Now it runs
-    // exactly once and the results are shared across all permutation threads.
-    let valid_bits = structural_host_bits(&games_struct, teams.len(), n_weeks);
+    // Wrap in an Arc<Mutex> so rayon worker threads can call the FnMut safely.
+    let progress_cb = std::sync::Arc::new(std::sync::Mutex::new(progress_cb));
+    let call_progress = |p: f32| {
+        if let Ok(mut cb) = progress_cb.lock() {
+            cb(p);
+        }
+    };
 
-    // Collect permutations (owned Strings) so rayon can distribute them.
+    // Report 10% after structural pre-computation begins
+    call_progress(0.05);
+    let valid_bits = structural_host_bits(&games_struct, teams.len(), n_weeks);
+    call_progress(0.15);
+
     let all_perms: Vec<Vec<String>> = teams
         .iter()
         .permutations(teams.len())
         .map(|p| p.into_iter().cloned().collect())
         .collect();
 
-    // Parallel per-permutation processing.
-    // Each thread maps label indices → real team names using the precomputed
-    // valid_bits and emits (dedup-signature, Solution) pairs.
+    let total_perms = all_perms.len();
+
+    // Use an atomic counter to track progress across rayon threads.
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    let completed = Arc::new(AtomicUsize::new(0));
+    let completed_clone = Arc::clone(&completed);
+
     let per_perm_candidates: Vec<Vec<(Vec<(u32, Vec<(String, String)>)>, Solution)>> =
         all_perms.par_iter().map(|perm| {
-            // perm[label_idx] = team name for this permutation.
             let mut bye_assignment: ByeAssignment = HashMap::new();
             for (wi, maybe_label) in bye_label_per_week.iter().enumerate() {
                 if let Some(&li) = maybe_label.as_ref() {
@@ -233,6 +229,8 @@ pub fn run_scheduler(config: &LeagueConfig) -> Result<Vec<Solution>, String> {
             if weeks.len() == 5
                 && !valid_bye_assignment(&bye_assignment, &config.bye_restrictions)
             {
+                let done = completed_clone.fetch_add(1, Ordering::Relaxed) + 1;
+                if let Ok(mut cb) = progress_cb.lock() { cb(0.15 + 0.80 * (done as f32 / total_perms as f32)); }
                 return vec![];
             }
 
@@ -246,7 +244,6 @@ pub fn run_scheduler(config: &LeagueConfig) -> Result<Vec<Solution>, String> {
             let mut local_candidates = vec![];
 
             for &bits in &valid_bits {
-                // Materialise the named schedule for this (permutation, bits) pair.
                 let mut sched: Schedule =
                     sorted_weeks.iter().map(|&w| (w, vec![])).collect();
                 for (i, &(wi, t1_li, t2_li)) in games_struct.iter().enumerate() {
@@ -261,7 +258,6 @@ pub fn run_scheduler(config: &LeagueConfig) -> Result<Vec<Solution>, String> {
 
                 let penalty = host_streak_penalty(&sched, weeks, teams);
 
-                // Canonical deduplication signature (order-independent matchup pairs).
                 let mut sig: Vec<(u32, Vec<(String, String)>)> = sorted_weeks
                     .iter()
                     .map(|&w| {
@@ -291,11 +287,16 @@ pub fn run_scheduler(config: &LeagueConfig) -> Result<Vec<Solution>, String> {
                     },
                 ));
             }
+
+            let done = completed_clone.fetch_add(1, Ordering::Relaxed) + 1;
+            if let Ok(mut cb) = progress_cb.lock() { cb(0.15 + 0.80 * (done as f32 / total_perms as f32)); }
+
             local_candidates
         })
         .collect();
 
-    // Single-threaded dedup + merge for stable, deterministic ranking.
+    call_progress(0.97);
+
     let mut seen: HashSet<Vec<(u32, Vec<(String, String)>)>> = HashSet::new();
     let mut solutions: Vec<Solution> = Vec::new();
     for candidates in per_perm_candidates {
@@ -309,7 +310,7 @@ pub fn run_scheduler(config: &LeagueConfig) -> Result<Vec<Solution>, String> {
     }
 
     solutions.sort_by(|a, b| (b.score, -b.penalty).cmp(&(a.score, -a.penalty)));
-    Ok(solutions
+    let result = Ok(solutions
         .into_iter()
         .take(5)
         .enumerate()
@@ -317,5 +318,13 @@ pub fn run_scheduler(config: &LeagueConfig) -> Result<Vec<Solution>, String> {
             s.rank = i + 1;
             s
         })
-        .collect())
+        .collect());
+
+    call_progress(1.0);
+    result
+}
+
+/// Original entry point kept for compatibility — delegates to the progress variant.
+pub fn run_scheduler(config: &LeagueConfig) -> Result<Vec<Solution>, String> {
+    run_scheduler_with_progress(config, |_| {})
 }

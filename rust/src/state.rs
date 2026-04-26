@@ -45,6 +45,9 @@ pub struct SwimScheduler {
     pub results: Vec<Solution>,
     pub selected_rank: usize,
     pub run_error: Option<String>,
+    // Progress modal state
+    pub is_running: bool,
+    pub scheduler_progress: f32,
 }
 
 
@@ -70,4 +73,3 @@ impl SwimScheduler {
         self.step.as_ref().unwrap_or(&Step::Teams)
     }
 }
-

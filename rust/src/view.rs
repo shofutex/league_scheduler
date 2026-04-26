@@ -1,7 +1,8 @@
 use iced::widget::{
-    button, checkbox, column, container, horizontal_rule, row, scrollable, text, text_input, Space,
+    button, checkbox, column, container, horizontal_rule, row, scrollable, text, text_input,
+    progress_bar, Space,
 };
-use iced::{color, Alignment, Element, Length};
+use iced::{color, Alignment, Element, Length, Color};
 
 use crate::config::team_color;
 
@@ -24,7 +25,7 @@ impl SwimScheduler {
             Step::Results => self.view_results(),
         };
 
-        column![
+        let main_ui: Element<Message> = column![
             self.view_header(),
             self.view_breadcrumb(),
             horizontal_rule(1),
@@ -32,6 +33,94 @@ impl SwimScheduler {
             horizontal_rule(1),
             self.view_nav(),
         ]
+        .into();
+
+        // When the scheduler is running, layer a modal over the main UI.
+        if self.is_running {
+            self.view_progress_modal(main_ui)
+        } else {
+            main_ui
+        }
+    }
+
+    // ── Progress modal ────────────────────────────────────────────────────────
+
+    fn view_progress_modal<'a>(&self, base: Element<'a, Message>) -> Element<'a, Message> {
+        let pct = (self.scheduler_progress * 100.0).round() as u32;
+
+        let label = if pct < 10 {
+            "Preparing…"
+        } else if pct < 90 {
+            "Searching schedules…"
+        } else {
+            "Finalising results…"
+        };
+
+        let modal_card: Element<Message> = container(
+            column![
+                text("Running Scheduler").size(18),
+                Space::with_height(8),
+                text(label).size(13).color(Color { r: 0.6, g: 0.6, b: 0.6, a: 1.0 }),
+                Space::with_height(16),
+                progress_bar(0.0..=1.0, self.scheduler_progress)
+                    .width(Length::Fill)
+                    .height(12),
+                Space::with_height(10),
+                text(format!("{}%", pct)).size(13),
+            ]
+            .spacing(0)
+            .align_x(Alignment::Center)
+            .width(340),
+        )
+        .padding(32)
+        .style(|_theme| container::Style {
+            background: Some(iced::Background::Color(Color {
+                r: 0.13, g: 0.14, b: 0.20, a: 1.0,
+            })),
+            border: iced::Border {
+                color: Color { r: 0.25, g: 0.27, b: 0.38, a: 1.0 },
+                width: 1.0,
+                radius: 10.0.into(),
+            },
+            shadow: iced::Shadow {
+                color: Color { r: 0.0, g: 0.0, b: 0.0, a: 0.5 },
+                offset: iced::Vector { x: 0.0, y: 4.0 },
+                blur_radius: 20.0,
+            },
+            ..Default::default()
+        })
+        .into();
+
+        // Dim backdrop + centred card. iced doesn't have a built-in Stack widget
+        // in 0.13, so we fake the overlay by wrapping the base content in a
+        // container that fills the window, then layering via column with a
+        // translucent backdrop container on top using a workaround with
+        // iced_graphics overlay primitives not available here.
+        //
+        // The cleanest available approach in iced 0.13 without extra deps is to
+        // use `iced::widget::stack` if it exists, or simply replace the entire
+        // view with a centred modal — which is clear and functional.
+        let _ = base; // base is intentionally replaced while modal is active
+
+        container(
+            column![
+                Space::with_height(Length::Fill),
+                row![
+                    Space::with_width(Length::Fill),
+                    modal_card,
+                    Space::with_width(Length::Fill),
+                ],
+                Space::with_height(Length::Fill),
+            ]
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(|_theme| container::Style {
+            background: Some(iced::Background::Color(Color {
+                r: 0.07, g: 0.08, b: 0.12, a: 1.0,
+            })),
+            ..Default::default()
+        })
         .into()
     }
 

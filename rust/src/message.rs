@@ -1,6 +1,7 @@
 // ── Messages ──────────────────────────────────────────────────────────────────
 use crate::config::LeagueConfig;
 use crate::state::Step;
+use crate::scheduler::Solution;
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -14,6 +15,9 @@ pub enum Message {
     PrefChanged(String, usize, String),
     ToggleRestriction(String, u32),
     ToggleExclusion(String),
-    RunScheduler, SelectRank(usize),
+    RunScheduler,
+    SchedulerProgress(f32),
+    SchedulerComplete(Result<Vec<Solution>, String>),
+    SelectRank(usize),
     ExportResults, ExportDone(Result<(), String>),
 }

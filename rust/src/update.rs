@@ -7,13 +7,15 @@ use crate::state::SwimScheduler;
 use crate::message::Message;
 use crate::state::Step;
 use crate::config::schedule_to_inputs;
-use crate::scheduler::run_scheduler;
-
+use crate::scheduler::{run_scheduler_with_progress, Solution};
 
 use crate::config::LeagueConfig;
 use crate::config::default_5team_schedule;
 use crate::config::default_6team_schedule;
 
+use iced::futures::channel::mpsc as async_mpsc;
+use iced::futures::SinkExt;
+use iced::futures::StreamExt;
 
 impl SwimScheduler {
     pub fn update(&mut self, message: Message) -> Task<Message> {
@@ -140,12 +142,81 @@ impl SwimScheduler {
             }
 
             Message::RunScheduler => {
+                self.is_running = true;
+                self.scheduler_progress = 0.0;
+
+                let config = self.config.clone();
+
+                // Use iced's built-in async mpsc channel so the stream can await
+                // new values without needing tokio or any extra runtime.
+                // The channel carries Option<f32>: Some(p) = progress, None = done+err sentinel.
+                // We send the final Result separately via a std::sync::OnceLock.
+                //
+                // Simpler approach: send f32 values where:
+                //   0.0 ..= 1.0  → progress update
+                //   sentinel 2.0 → scheduler finished OK   (solutions stored in OnceLock)
+                //   sentinel 3.0 → scheduler finished Err  (error stored in OnceLock)
+                use std::sync::{Arc, Mutex};
+
+                // Shared slot for the final result.
+                let result_slot: Arc<Mutex<Option<Result<Vec<crate::scheduler::Solution>, String>>>> =
+                    Arc::new(Mutex::new(None));
+                let result_slot_thread = Arc::clone(&result_slot);
+
+                // Bounded async channel — capacity 64 is plenty for progress ticks.
+                let (mut tx, rx) = async_mpsc::channel::<f32>(64);
+                let mut tx_done = tx.clone();
+
+                std::thread::spawn(move || {
+                    let result = run_scheduler_with_progress(&config, move |p| {
+                        // try_send is non-blocking; if the buffer is full we just skip a tick.
+                        let _ = tx.try_send(p);
+                    });
+                    // Store result then send sentinel.
+                    *result_slot_thread.lock().unwrap() = Some(result);
+                    let _ = tx_done.try_send(2.0); // sentinel: done
+                });
+
+                return Task::run(
+                    iced::futures::stream::unfold(
+                        (rx, result_slot),
+                        |(mut rx, slot)| async move {
+                            match rx.next().await {
+                                Some(v) if v < 1.5 => {
+                                    // Normal progress tick.
+                                    Some((Message::SchedulerProgress(v), (rx, slot)))
+                                }
+                                Some(_) => {
+                                    // Sentinel received — extract the result.
+                                    let result = slot
+                                        .lock()
+                                        .unwrap()
+                                        .take()
+                                        .unwrap_or_else(|| Err("No result".into()));
+                                    Some((Message::SchedulerComplete(result), (rx, slot)))
+                                }
+                                None => None, // channel closed
+                            }
+                        },
+                    ),
+                    std::convert::identity,
+                );
+            }
+
+            Message::SchedulerProgress(p) => {
+                self.scheduler_progress = p;
+            }
+
+            Message::SchedulerComplete(result) => {
+                self.is_running = false;
+                self.scheduler_progress = 1.0;
                 self.step = Some(Step::Results);
-                match run_scheduler(&self.config) {
-                    Ok(sols) => { self.results=sols; self.selected_rank=1; self.run_error=None; }
-                    Err(e) => { self.results.clear(); self.run_error=Some(e); }
+                match result {
+                    Ok(sols) => { self.results = sols; self.selected_rank = 1; self.run_error = None; }
+                    Err(e) => { self.results.clear(); self.run_error = Some(e); }
                 }
             }
+
             Message::SelectRank(r) => self.selected_rank = r,
 
             Message::ExportResults => {
