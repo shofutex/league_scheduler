@@ -1,9 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use itertools::Itertools;
-
+use rayon::prelude::*;
 
 use crate::config::LeagueConfig;
-
 
 // ── Scheduling ────────────────────────────────────────────────────────────────
 
@@ -30,16 +29,19 @@ fn valid_bye_assignment(ba: &ByeAssignment, restrictions: &HashMap<String, Vec<u
     true
 }
 
-fn score_byes(ba: &ByeAssignment, prefs: &HashMap<String, [u32;2]>, teams: &[String], excluded: &[String]) -> (i32, HashMap<String,i32>) {
+fn score_byes(
+    ba: &ByeAssignment,
+    prefs: &HashMap<String, [u32; 2]>,
+    teams: &[String],
+    excluded: &[String],
+) -> (i32, HashMap<String, i32>) {
     let mut score = 0;
     let mut detail = HashMap::new();
     for team in teams {
         if excluded.contains(team) {
-            detail.insert(team.clone(), -1); // sentinel: excluded
+            detail.insert(team.clone(), -1);
             continue;
         }
-        
-        // A 6-team league doesn't get bye weeks, so ba may be empty
         if let Some(&week) = ba.get(team) {
             let s = match prefs.get(team) {
                 Some(&[f, _]) if week == f => 2,
@@ -53,81 +55,97 @@ fn score_byes(ba: &ByeAssignment, prefs: &HashMap<String, [u32;2]>, teams: &[Str
     (score, detail)
 }
 
-fn assign_hosts(schedule: &Schedule, weeks: &[u32], teams: &[String]) -> Vec<Schedule> {
-    let games: Vec<(u32, Matchup)> = weeks.iter()
-        .flat_map(|&w| schedule[&w].iter().map(move |(a,b)| (w,(a.clone(),b.clone()))))
-        .collect();
-    let n = games.len();
-    let min_hosts = n / teams.len();
+// ── Structural host assignment ────────────────────────────────────────────────
+//
+// Works on label indices (0..n_labels) rather than team names. This lets us
+// enumerate all valid host-bit patterns once on the base schedule's structure
+// and reuse the result across every permutation, instead of re-running the
+// full bitmask search inside each permutation iteration.
+//
+// games_struct: flat list of (week_idx, label_t1, label_t2) sorted for
+//               deterministic bit ordering.
+// n_teams:      used to enforce the balanced-hosting constraint.
+// n_weeks:      length of the sorted week list (weeks must be pre-sorted).
+
+fn structural_host_bits(
+    games_struct: &[(usize, usize, usize)],
+    n_teams: usize,
+    n_weeks: usize,
+) -> Vec<u64> {
+    let n = games_struct.len();
+    let min_hosts = n / n_teams;
     let max_hosts = min_hosts + 1;
 
-    // For each team, precompute a bitmask of which game indices have them as t1 or t2
-    let team_masks: Vec<(u64, u64)> = teams.iter().map(|t| {
-        let t1_mask = games.iter().enumerate()
-            .filter(|(_, (_, (a, _)))| a == t)
-            .fold(0u64, |acc, (i, _)| acc | (1 << i));
-        let t2_mask = games.iter().enumerate()
-            .filter(|(_, (_, (_, b)))| b == t)
-            .fold(0u64, |acc, (i, _)| acc | (1 << i));
-        (t1_mask, t2_mask)
-    }).collect();
+    // Per-label bitmasks: which game indices have this label as t1 / t2.
+    let mut t1_masks = vec![0u64; n_teams];
+    let mut t2_masks = vec![0u64; n_teams];
+    for (i, &(_, t1, t2)) in games_struct.iter().enumerate() {
+        t1_masks[t1] |= 1 << i;
+        t2_masks[t2] |= 1 << i;
+    }
 
-    let mut options = Vec::new();
+    // Per-label, per-week participation masks for the streak check.
+    // streak_masks[label][week_idx] = bitmask of game indices in that week.
+    let mut streak_masks = vec![vec![0u64; n_weeks]; n_teams];
+    for (i, &(wi, t1, t2)) in games_struct.iter().enumerate() {
+        streak_masks[t1][wi] |= 1 << i;
+        streak_masks[t2][wi] |= 1 << i;
+    }
+
+    let mut valid_bits = Vec::new();
+
     'bits: for bits in 0u64..(1u64 << n) {
-        // Check counts via bitmask before building anything
-        for (t1_mask, t2_mask) in &team_masks {
-            // team hosts when it's t1 and bit=0, or t2 and bit=1
-            let hosted = ((!bits & t1_mask) | (bits & t2_mask)).count_ones() as usize;
-            if hosted < min_hosts || hosted > max_hosts { continue 'bits; }
+        // 1. Balanced-host count check — pure bitmask arithmetic, no allocation.
+        for label in 0..n_teams {
+            let hosted =
+                ((!bits & t1_masks[label]) | (bits & t2_masks[label])).count_ones() as usize;
+            if hosted < min_hosts || hosted > max_hosts {
+                continue 'bits;
+            }
         }
 
-        // Build schedule only for bitmasks that pass the count check
-        let mut sched: Schedule = weeks.iter().map(|&w| (w, vec![])).collect();
-        for (i, (w, (t1, t2))) in games.iter().enumerate() {
-            let (host, away) = if (bits >> i) & 1 == 0 { (t1.as_str(), t2.as_str()) } else { (t2.as_str(), t1.as_str()) };
-            sched.get_mut(w).unwrap().push((host.to_string(), away.to_string()));
-        }
-
-        // Reject any assignment where a team hosts 3+ consecutive weeks
-        let no_long_streak = {
-            let mut ok = true;
-            'outer: for team in teams {
-                let mut host_weeks: Vec<u32> = weeks.iter()
-                    .filter(|&&w| sched[&w].iter().any(|(h, _)| h == team))
-                    .copied()
-                    .collect();
-                host_weeks.sort_unstable();
-                let mut streak = 1u32;
-                for pair in host_weeks.windows(2) {
-                    if pair[1] == pair[0] + 1 {
-                        streak += 1;
-                        if streak >= 3 {
-                            ok = false;
-                            break 'outer;
-                        }
-                    } else {
-                        streak = 1;
+        // 2. Consecutive-hosting streak check — also bitmask, no HashMap needed.
+        //    A label hosts in week wi when at least one of its games that week
+        //    has it assigned as host (bit=0 → t1 hosts; bit=1 → t2 hosts).
+        for label in 0..n_teams {
+            let mut streak = 0u32;
+            for wi in 0..n_weeks {
+                let wm = streak_masks[label][wi];
+                let hosts_this_week =
+                    ((!bits & t1_masks[label] & wm) | (bits & t2_masks[label] & wm)) != 0;
+                if hosts_this_week {
+                    streak += 1;
+                    if streak >= 3 {
+                        continue 'bits;
                     }
+                } else {
+                    streak = 0;
                 }
             }
-            ok
-        };
-        if no_long_streak { options.push(sched); }
+        }
+
+        valid_bits.push(bits);
     }
-    options
+
+    valid_bits
 }
 
 fn host_streak_penalty(schedule: &Schedule, weeks: &[u32], teams: &[String]) -> i32 {
-    let mut host_weeks: HashMap<&str,Vec<u32>> = teams.iter().map(|t|(t.as_str(),vec![])).collect();
+    let mut host_weeks: HashMap<&str, Vec<u32>> =
+        teams.iter().map(|t| (t.as_str(), vec![])).collect();
     for &w in weeks {
-        for (host,_) in &schedule[&w] {
+        for (host, _) in &schedule[&w] {
             host_weeks.get_mut(host.as_str()).unwrap().push(w);
         }
     }
     let mut penalty = 0;
     for hw in host_weeks.values_mut() {
         hw.sort_unstable();
-        for pair in hw.windows(2) { if pair[1]==pair[0]+1 { penalty+=1; } }
+        for pair in hw.windows(2) {
+            if pair[1] == pair[0] + 1 {
+                penalty += 1;
+            }
+        }
     }
     penalty
 }
@@ -137,56 +155,167 @@ pub fn run_scheduler(config: &LeagueConfig) -> Result<Vec<Solution>, String> {
     let weeks = &config.weeks;
     let labels = &config.labels;
 
-    if teams.len() < 2 { return Err("Need at least 2 teams.".into()); }
-    if weeks.is_empty() { return Err("Need at least one week.".into()); }
+    if teams.len() < 2 {
+        return Err("Need at least 2 teams.".into());
+    }
+    if weeks.is_empty() {
+        return Err("Need at least one week.".into());
+    }
     if labels.len() != teams.len() {
-        return Err(format!("Labels count ({}) must match team count ({}).", labels.len(), teams.len()));
+        return Err(format!(
+            "Labels count ({}) must match team count ({}).",
+            labels.len(),
+            teams.len()
+        ));
     }
-    let mut solutions: Vec<Solution> = Vec::new();
-    let mut seen: HashSet<Vec<(u32,Vec<(String,String)>)>> = HashSet::new();
-    let team_set: HashSet<&str> = teams.iter().map(|s|s.as_str()).collect();
-    
-    for perm in teams.iter().permutations(teams.len()) {        
-        let mapping: HashMap<&str,&str> = labels.iter().zip(perm.iter()).map(|(l,t)|(l.as_str(),t.as_str())).collect();
-        let mut schedule: Schedule = HashMap::new();
-        let mut bye_assignment: ByeAssignment = HashMap::new();
 
-        for (&w, games) in &config.base_schedule {
-            let mut real_games = vec![];
-            let mut playing: HashSet<&str> = HashSet::new();
-            for [a,b] in games {
-                let t1 = mapping[a.as_str()];
-                let t2 = mapping[b.as_str()];
-                real_games.push((t1.to_string(),t2.to_string()));
-                playing.insert(t1); playing.insert(t2);
+    // Stable week ordering so array indices are consistent everywhere.
+    let mut sorted_weeks = weeks.clone();
+    sorted_weeks.sort_unstable();
+    let week_index: HashMap<u32, usize> =
+        sorted_weeks.iter().enumerate().map(|(i, &w)| (w, i)).collect();
+    let n_weeks = sorted_weeks.len();
+
+    let label_index: HashMap<&str, usize> =
+        labels.iter().enumerate().map(|(i, l)| (l.as_str(), i)).collect();
+
+    // Convert base_schedule to structural form: (week_idx, label_t1, label_t2).
+    // Also record which label index has the bye each week.
+    let mut games_struct: Vec<(usize, usize, usize)> = Vec::new();
+    let mut bye_label_per_week: Vec<Option<usize>> = vec![None; n_weeks];
+
+    for (&w, matchups) in &config.base_schedule {
+        let wi = week_index[&w];
+        let mut playing: HashSet<usize> = HashSet::new();
+        for [a, b] in matchups {
+            let t1 = label_index[a.as_str()];
+            let t2 = label_index[b.as_str()];
+            games_struct.push((wi, t1, t2));
+            playing.insert(t1);
+            playing.insert(t2);
+        }
+        let sitters: Vec<usize> = (0..labels.len()).filter(|i| !playing.contains(i)).collect();
+        if sitters.len() == 1 {
+            bye_label_per_week[wi] = Some(sitters[0]);
+        }
+    }
+
+    // Sort for deterministic bit ordering across calls.
+    games_struct.sort_unstable();
+
+    // ── KEY OPTIMISATION ─────────────────────────────────────────────────────
+    // Enumerate all valid host-bit patterns once on the structural (label-index)
+    // representation. Previously assign_hosts() was called inside the permutation
+    // loop, redoing this O(2^n_games) search for every permutation. Now it runs
+    // exactly once and the results are shared across all permutation threads.
+    let valid_bits = structural_host_bits(&games_struct, teams.len(), n_weeks);
+
+    // Collect permutations (owned Strings) so rayon can distribute them.
+    let all_perms: Vec<Vec<String>> = teams
+        .iter()
+        .permutations(teams.len())
+        .map(|p| p.into_iter().cloned().collect())
+        .collect();
+
+    // Parallel per-permutation processing.
+    // Each thread maps label indices → real team names using the precomputed
+    // valid_bits and emits (dedup-signature, Solution) pairs.
+    let per_perm_candidates: Vec<Vec<(Vec<(u32, Vec<(String, String)>)>, Solution)>> =
+        all_perms.par_iter().map(|perm| {
+            // perm[label_idx] = team name for this permutation.
+            let mut bye_assignment: ByeAssignment = HashMap::new();
+            for (wi, maybe_label) in bye_label_per_week.iter().enumerate() {
+                if let Some(&li) = maybe_label.as_ref() {
+                    bye_assignment.insert(perm[li].clone(), sorted_weeks[wi]);
+                }
             }
-            schedule.insert(w, real_games);
-            let sitters: Vec<_> = team_set.difference(&playing).copied().collect();
 
-            if sitters.len()==1 { bye_assignment.insert(sitters[0].to_string(), w); }
-        }
+            if weeks.len() == 5
+                && !valid_bye_assignment(&bye_assignment, &config.bye_restrictions)
+            {
+                return vec![];
+            }
 
-        if weeks.len() == 5 && !valid_bye_assignment(&bye_assignment, &config.bye_restrictions) { continue; }
-        let host_options = assign_hosts(&schedule, weeks, teams);
-        if host_options.is_empty() { eprintln!("Empty hosts"); continue; }
-        let (score, detail) = score_byes(&bye_assignment, &config.bye_preferences, teams, &config.score_excluded);
+            let (score, detail) = score_byes(
+                &bye_assignment,
+                &config.bye_preferences,
+                teams,
+                &config.score_excluded,
+            );
 
-        for sched in host_options {
-            let penalty = host_streak_penalty(&sched, weeks, teams);
-            let mut sig: Vec<(u32,Vec<(String,String)>)> = weeks.iter().map(|&w| {
-                let mut gs: Vec<_> = sched[&w].iter().map(|(h,a)| {
-                    let mut p = [h.clone(),a.clone()]; p.sort(); (p[0].clone(),p[1].clone())
-                }).collect();
-                gs.sort(); (w,gs)
-            }).collect();
-            sig.sort_by_key(|(w,_)| *w);
-            if seen.contains(&sig) { continue; }
+            let mut local_candidates = vec![];
+
+            for &bits in &valid_bits {
+                // Materialise the named schedule for this (permutation, bits) pair.
+                let mut sched: Schedule =
+                    sorted_weeks.iter().map(|&w| (w, vec![])).collect();
+                for (i, &(wi, t1_li, t2_li)) in games_struct.iter().enumerate() {
+                    let w = sorted_weeks[wi];
+                    let (host, away) = if (bits >> i) & 1 == 0 {
+                        (perm[t1_li].as_str(), perm[t2_li].as_str())
+                    } else {
+                        (perm[t2_li].as_str(), perm[t1_li].as_str())
+                    };
+                    sched.get_mut(&w).unwrap().push((host.to_string(), away.to_string()));
+                }
+
+                let penalty = host_streak_penalty(&sched, weeks, teams);
+
+                // Canonical deduplication signature (order-independent matchup pairs).
+                let mut sig: Vec<(u32, Vec<(String, String)>)> = sorted_weeks
+                    .iter()
+                    .map(|&w| {
+                        let mut gs: Vec<_> = sched[&w]
+                            .iter()
+                            .map(|(h, a)| {
+                                let mut p = [h.clone(), a.clone()];
+                                p.sort();
+                                (p[0].clone(), p[1].clone())
+                            })
+                            .collect();
+                        gs.sort();
+                        (w, gs)
+                    })
+                    .collect();
+                sig.sort_by_key(|&(w, _)| w);
+
+                local_candidates.push((
+                    sig,
+                    Solution {
+                        rank: 0,
+                        score,
+                        penalty,
+                        bye_detail: detail.clone(),
+                        bye_assignment: bye_assignment.clone(),
+                        schedule: sched,
+                    },
+                ));
+            }
+            local_candidates
+        })
+        .collect();
+
+    // Single-threaded dedup + merge for stable, deterministic ranking.
+    let mut seen: HashSet<Vec<(u32, Vec<(String, String)>)>> = HashSet::new();
+    let mut solutions: Vec<Solution> = Vec::new();
+    for candidates in per_perm_candidates {
+        for (sig, sol) in candidates {
+            if seen.contains(&sig) {
+                continue;
+            }
             seen.insert(sig);
-            solutions.push(Solution { rank:0, score, penalty, bye_detail:detail.clone(), bye_assignment:bye_assignment.clone(), schedule:sched });
+            solutions.push(sol);
         }
     }
 
-    solutions.sort_by(|a,b| (b.score,-b.penalty).cmp(&(a.score,-a.penalty)));
-    Ok(solutions.into_iter().take(5).enumerate().map(|(i,mut s)| { s.rank=i+1; s }).collect())
+    solutions.sort_by(|a, b| (b.score, -b.penalty).cmp(&(a.score, -a.penalty)));
+    Ok(solutions
+        .into_iter()
+        .take(5)
+        .enumerate()
+        .map(|(i, mut s)| {
+            s.rank = i + 1;
+            s
+        })
+        .collect())
 }
-
