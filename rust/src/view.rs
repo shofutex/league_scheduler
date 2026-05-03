@@ -325,24 +325,39 @@ impl SwimScheduler {
             );
         }
 
-        let add_row = row![
-            text_input("New team name…", &self.new_team_name)
+        let at_max = self.config.teams.len() >= 6;
+
+        // When at the 6-team maximum, the text input and Add button are both
+        // rendered without interaction handlers so they appear and behave as
+        // disabled.  The update-layer guard in AddTeam provides a second line
+        // of defence if the user somehow submits anyway.
+        let name_input = text_input("New team name…", &self.new_team_name).width(300);
+        let name_input = if at_max {
+            name_input // no on_input / on_submit — field is inert
+        } else {
+            name_input
                 .on_input(Message::NewTeamNameChanged)
-                .on_submit(Message::AddTeam) // Enter key commits
-                .width(300),
-            button(text("Add Team")).on_press(Message::AddTeam),
-        ]
-        .spacing(10)
-        .align_y(Alignment::Center);
+                .on_submit(Message::AddTeam)
+        };
+        let add_btn: Element<Message> = if at_max {
+            button(text("Add Team")).into() // no on_press — button is inert
+        } else {
+            button(text("Add Team")).on_press(Message::AddTeam).into()
+        };
+
+        let add_row = row![name_input, add_btn]
+            .spacing(10)
+            .align_y(Alignment::Center);
 
         scrollable(
             container(
                 column![
                     list,
                     add_row,
-                    // Show how many more teams are needed, or confirm the count
-                    // is valid.  This doubles as an explanation for why Next
-                    // may be greyed out.
+                    // Status hint covering all three states:
+                    //   < 5 teams → amber warning explaining why Next is grey.
+                    //   5 teams   → neutral confirmation, ready to proceed.
+                    //   6 teams   → neutral confirmation, maximum reached.
                     if self.config.teams.len() < 5 {
                         text(format!(
                             "{} team(s) added — add {} more to continue (minimum 5).",
@@ -351,12 +366,15 @@ impl SwimScheduler {
                         ))
                         .size(12)
                         .color(Color { r: 0.9, g: 0.6, b: 0.3, a: 1.0 }) // amber warning
-                    } else {
+                    } else if self.config.teams.len() < 6 {
                         text(format!(
-                            "{} team(s) added. Supports 5 or 6 teams.",
+                            "{} team(s) added. You can add one more or proceed.",
                             self.config.teams.len()
                         ))
                         .size(12)
+                    } else {
+                        text("6 team(s) added — maximum reached.")
+                            .size(12)
                     },
                 ]
                 .spacing(20),

@@ -101,7 +101,13 @@ impl SwimScheduler {
             /// button manually in the common case.
             Message::AddTeam => {
                 let name = self.new_team_name.trim().to_string();
-                if !name.is_empty() && !self.config.teams.contains(&name) {
+                // 6 is the maximum supported team count.  The guard is checked
+                // before anything else so the name field is left intact — the
+                // user can correct the situation by removing a team first.
+                if !name.is_empty()
+                    && !self.config.teams.contains(&name)
+                    && self.config.teams.len() < 6
+                {
                     self.config.teams.push(name);
                     self.new_team_name.clear();
                     self.sync_labels(); // keep labels.len() == teams.len()
