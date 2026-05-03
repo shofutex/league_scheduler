@@ -93,23 +93,36 @@ impl SwimScheduler {
 
             /// Validate and commit the current `new_team_name` to `config.teams`.
             /// Silently ignores blank names or names that already exist.
-            /// After adding, re-syncs the A/B/C… label list to match the new
-            /// team count.
+            ///
+            /// After adding, re-syncs labels and — if the team count just
+            /// reached a supported default size (5 or 6) — automatically loads
+            /// the corresponding built-in round-robin base schedule.  This
+            /// saves the user from having to visit Step 3 and click a default
+            /// button manually in the common case.
             Message::AddTeam => {
                 let name = self.new_team_name.trim().to_string();
                 if !name.is_empty() && !self.config.teams.contains(&name) {
                     self.config.teams.push(name);
                     self.new_team_name.clear();
                     self.sync_labels(); // keep labels.len() == teams.len()
+                    // Auto-load the matching default schedule whenever the team
+                    // count lands on a supported size.  The user can still
+                    // override it manually on the Base Schedule step.
+                    self.apply_default_schedule_if_supported();
                 }
             }
 
             /// Remove the team at `idx` and re-sync labels.
             /// Bounds-checked — ignores out-of-range indices.
+            ///
+            /// Also re-applies the matching default schedule if the new team
+            /// count is 5 or 6, so the base schedule stays consistent as the
+            /// user adjusts the team list.
             Message::RemoveTeam(idx) => {
                 if idx < self.config.teams.len() {
                     self.config.teams.remove(idx);
                     self.sync_labels();
+                    self.apply_default_schedule_if_supported();
                 }
             }
 
@@ -524,7 +537,40 @@ impl SwimScheduler {
             .collect();
     }
 
-    /// Re-derive `base_schedule_inputs` from `config.base_schedule`.
+    /// If the current team count matches a supported default size (5 or 6),
+    /// load the corresponding built-in round-robin base schedule and sync the
+    /// text-field representations.
+    ///
+    /// Called automatically after every `AddTeam` and `RemoveTeam` so the base
+    /// schedule always reflects the team count without requiring the user to
+    /// visit Step 3 and click a default button manually.
+    ///
+    /// This is a no-op when the team count is anything other than 5 or 6,
+    /// preserving any custom schedule the user may have entered for other sizes.
+    pub fn apply_default_schedule_if_supported(&mut self) {
+        match self.config.teams.len() {
+            5 => {
+                // Switch to the 5-team round-robin: labels A–E, one bye per
+                // team per week, every pair plays exactly once.
+                self.config.labels = ["A", "B", "C", "D", "E"]
+                    .iter().map(|s| s.to_string()).collect();
+                self.config.base_schedule = default_5team_schedule();
+                self.base_schedule_inputs = schedule_to_inputs(&self.config.base_schedule);
+                self.base_schedule_error = None;
+            }
+            6 => {
+                // Switch to the 6-team round-robin: labels A–F, no byes,
+                // every team plays every week.
+                self.config.labels = ["A", "B", "C", "D", "E", "F"]
+                    .iter().map(|s| s.to_string()).collect();
+                self.config.base_schedule = default_6team_schedule();
+                self.base_schedule_inputs = schedule_to_inputs(&self.config.base_schedule);
+                self.base_schedule_error = None;
+            }
+            // Any other count (< 5, or > 6): leave the schedule untouched.
+            _ => {}
+        }
+    }
     ///
     /// Called after `ApplyWeeks` so that any week added or removed from the
     /// week list gets a corresponding (possibly empty) text field in the UI.
