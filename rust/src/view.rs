@@ -256,6 +256,11 @@ impl SwimScheduler {
         };
 
         // Right-side action varies by step.
+        //
+        // On the Teams step, Next is disabled until at least 5 teams have been
+        // added (5 is the minimum the scheduler supports).  In iced, a button
+        // with no `on_press` is rendered in a visually muted style and receives
+        // no pointer events — no separate "disabled" flag is needed.
         let right: Element<Message> = match self.current_step() {
             Step::Results => button(text("Export Results"))
                 .on_press(Message::ExportResults)
@@ -263,6 +268,15 @@ impl SwimScheduler {
             Step::ScoreExclusions => button(text("Run Scheduler →"))
                 .on_press(Message::RunScheduler)
                 .into(),
+            Step::Teams => {
+                let btn = button(text("Next →"));
+                if self.config.teams.len() >= 5 {
+                    btn.on_press(Message::Next).into()
+                } else {
+                    // No on_press → button is inert and styled as disabled.
+                    btn.into()
+                }
+            }
             _ => button(text("Next →")).on_press(Message::Next).into(),
         };
 
@@ -326,11 +340,24 @@ impl SwimScheduler {
                 column![
                     list,
                     add_row,
-                    text(format!(
-                        "{} team(s) added. Supports 5 or 6 teams.",
-                        self.config.teams.len()
-                    ))
-                    .size(12),
+                    // Show how many more teams are needed, or confirm the count
+                    // is valid.  This doubles as an explanation for why Next
+                    // may be greyed out.
+                    if self.config.teams.len() < 5 {
+                        text(format!(
+                            "{} team(s) added — add {} more to continue (minimum 5).",
+                            self.config.teams.len(),
+                            5 - self.config.teams.len()
+                        ))
+                        .size(12)
+                        .color(Color { r: 0.9, g: 0.6, b: 0.3, a: 1.0 }) // amber warning
+                    } else {
+                        text(format!(
+                            "{} team(s) added. Supports 5 or 6 teams.",
+                            self.config.teams.len()
+                        ))
+                        .size(12)
+                    },
                 ]
                 .spacing(20),
             )
