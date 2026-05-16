@@ -555,3 +555,82 @@ where
 pub fn run_scheduler(config: &LeagueConfig) -> Result<Vec<Solution>, String> {
     run_scheduler_with_progress(config, |_| {})
 }
+
+// ── Output formatting ─────────────────────────────────────────────────────────
+
+/// Format a ranked list of solutions as a human-readable string.
+///
+/// This is the single source of truth for result output.  Both the GUI's
+/// Export feature (`Message::ExportResults` in `update.rs`) and the headless
+/// CLI (`cli.rs`) call this function so the two outputs are always identical.
+///
+/// ## Format
+///
+/// One section per solution, separated by a `==============================`
+/// rule.  Each section contains:
+/// - Rank, score, and streak penalty.
+/// - A bye-week table with per-team scores and preference labels.
+/// - A week-by-week match listing (host then away).
+///
+/// The string always ends with a trailing newline so it can be written
+/// directly to a file or printed with `print!` without extra formatting.
+pub fn format_results(solutions: &[Solution], teams: &[String], weeks: &[u32]) -> String {
+    let mut sorted_weeks = weeks.to_vec();
+    sorted_weeks.sort_unstable();
+
+    let mut out = format!("Found {} solution(s).\n", solutions.len());
+
+    for sol in solutions {
+        out.push_str("\n==============================\n");
+        out.push_str(&format!("Rank:    {}\n", sol.rank));
+        out.push_str(&format!("Score:   {}\n", sol.score));
+        out.push_str(&format!("Penalty: {}\n", sol.penalty));
+
+        // ── Bye-week table ────────────────────────────────────────────────────
+        out.push_str("\nBye Weeks\n");
+        out.push_str("---------\n");
+        for team in teams {
+            let week  = sol.bye_assignment.get(team).copied();
+            let score = sol.bye_detail.get(team).copied().unwrap_or(0);
+
+            match week {
+                Some(w) => {
+                    let label = match score {
+                        -1 => " (excluded)",
+                        2  => " ✓ 1st choice",
+                        1  => " ✓ 2nd choice",
+                        _  => "",
+                    };
+                    out.push_str(&format!(
+                        "  {:20} week {:2}  [score {}{}]\n",
+                        team, w, score, label,
+                    ));
+                }
+                None => {
+                    // 6-team schedules have no byes.
+                    out.push_str(&format!("  {:20} no bye\n", team));
+                }
+            }
+        }
+
+        // ── Week-by-week match listing ────────────────────────────────────────
+        out.push_str("\nMatches\n");
+        out.push_str("-------\n");
+        for &w in &sorted_weeks {
+            out.push_str(&format!("  Week {}:\n", w));
+            match sol.schedule.get(&w) {
+                Some(games) if !games.is_empty() => {
+                    for (host, away) in games {
+                        out.push_str(&format!("    {} hosts {}\n", host, away));
+                    }
+                }
+                _ => {
+                    out.push_str("    (no games — bye week)\n");
+                }
+            }
+        }
+    }
+
+    out.push('\n');
+    out
+}

@@ -29,7 +29,7 @@
 use std::path::Path;
 
 use crate::config::LeagueConfig;
-use crate::scheduler::{run_scheduler_with_progress, Solution};
+use crate::scheduler::{run_scheduler_with_progress, format_results};
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
@@ -128,7 +128,7 @@ fn run_cli(path: &str) -> i32 {
             1
         }
         Ok(solutions) => {
-            print_results(&solutions, &config.teams, &config.weeks);
+            print!("{}", format_results(&solutions, &config.teams, &config.weeks));
             0
         }
     }
@@ -145,75 +145,6 @@ fn load_config(path: &str) -> Result<LeagueConfig, String> {
     serde_json::from_slice::<LeagueConfig>(&bytes).map_err(|e| {
         format!("JSON parse error: {}", e)
     })
-}
-
-// ── Output formatting ─────────────────────────────────────────────────────────
-
-/// Print all ranked solutions to stdout.
-///
-/// The format is identical to the plain-text export produced by the GUI
-/// (`Message::ExportResults`), so the same file can be saved or piped.
-fn print_results(solutions: &[Solution], teams: &[String], weeks: &[u32]) {
-    let mut sorted_weeks = weeks.to_vec();
-    sorted_weeks.sort_unstable();
-
-    println!();
-    println!("Found {} solution(s).", solutions.len());
-
-    for sol in solutions {
-        println!();
-        println!("==============================");
-        println!("Rank:    {}", sol.rank);
-        println!("Score:   {}", sol.score);
-        println!("Penalty: {}", sol.penalty);
-
-        // ── Bye-week table ────────────────────────────────────────────────────
-        println!();
-        println!("Bye Weeks");
-        println!("---------");
-        for team in teams {
-            let week  = sol.bye_assignment.get(team).copied();
-            let score = sol.bye_detail.get(team).copied().unwrap_or(0);
-
-            match week {
-                Some(w) => {
-                    let score_label = match score {
-                        -1 => " (excluded)".to_string(),
-                        2  => " ✓ 1st choice".to_string(),
-                        1  => " ✓ 2nd choice".to_string(),
-                        0  => String::new(),
-                        _  => String::new(),
-                    };
-                    println!("  {:20} week {:2}  [score {}{}]",
-                        team, w, score, score_label);
-                }
-                None => {
-                    // 6-team schedules have no byes.
-                    println!("  {:20} no bye", team);
-                }
-            }
-        }
-
-        // ── Week-by-week match listing ────────────────────────────────────────
-        println!();
-        println!("Matches");
-        println!("-------");
-        for &w in &sorted_weeks {
-            println!("  Week {}:", w);
-            match sol.schedule.get(&w) {
-                Some(games) if !games.is_empty() => {
-                    for (host, away) in games {
-                        println!("    {} hosts {}", host, away);
-                    }
-                }
-                _ => {
-                    println!("    (no games — bye week)");
-                }
-            }
-        }
-    }
-
-    println!();
 }
 
 // ── Help text ─────────────────────────────────────────────────────────────────

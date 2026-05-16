@@ -480,32 +480,7 @@ impl SwimScheduler {
                         match path {
                             None => Err("Cancelled".into()),
                             Some(p) => {
-                                let mut out = String::new();
-                                for sol in &results {
-                                    out.push_str(&format!(
-                                        "\n==============================\nRank: {}\nScore: {}\n\nBye Weeks\n",
-                                        sol.rank, sol.score
-                                    ));
-                                    for t in &teams {
-                                        out.push_str(&format!(
-                                            "  {}: week {}  (score {})\n",
-                                            t,
-                                            sol.bye_assignment.get(t).copied().unwrap_or(0),
-                                            sol.bye_detail.get(t).copied().unwrap_or(0)
-                                        ));
-                                    }
-                                    out.push_str("\nMatches\n");
-                                    let mut sw = weeks.clone();
-                                    sw.sort();
-                                    for w in &sw {
-                                        out.push_str(&format!("\n  Week {}\n", w));
-                                        if let Some(games) = sol.schedule.get(w) {
-                                            for (h, a) in games {
-                                                out.push_str(&format!("    {} hosts {}\n", h, a));
-                                            }
-                                        }
-                                    }
-                                }
+                                let out = crate::scheduler::format_results(&results, &teams, &weeks);
                                 std::fs::write(p.path(), out).map_err(|e| e.to_string())
                             }
                         }
