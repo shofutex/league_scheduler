@@ -12,6 +12,7 @@
 //! | `update`     | `SwimScheduler::update()` — all state mutations             |
 //! | `view`       | `SwimScheduler::view()` — pure widget-tree construction     |
 //! | `scheduler`  | Combinatorial scheduling engine (rayon-parallel)            |
+//! | `cli`        | Headless CLI: load JSON → run scheduler → print results     |
 //!
 //! ## Framework
 //!
@@ -24,6 +25,17 @@
 //! The application is single-window, 900 × 700 px, using the built-in
 //! `TokyoNight` theme.  The Inter font is bundled at compile time via
 //! `include_bytes!` so no system font installation is required.
+//!
+//! ## CLI mode
+//!
+//! When a JSON file path is passed as the first argument the GUI is never
+//! started.  `cli::run_if_cli()` handles everything and returns an exit code:
+//!
+//! ```text
+//! swim-scheduler league.json        # headless: load, run, print
+//! swim-scheduler --help             # print usage
+//! swim-scheduler                    # (no args) launch the GUI
+//! ```
 
 mod config;
 mod scheduler;
@@ -31,6 +43,7 @@ mod message;
 mod update;
 mod state;
 mod view;
+mod cli;
 
 use crate::state::SwimScheduler;
 use iced::Theme;
@@ -44,6 +57,23 @@ use iced::Theme;
 static INTER: &[u8] = include_bytes!("../fonts/Inter-Regular.ttf");
 
 fn main() -> iced::Result {
+    // Check for CLI arguments before touching iced.
+    //
+    // `run_if_cli` returns `Some(code)` when a file path (or --help) was
+    // supplied, in which case we exit immediately with that code.  Returning
+    // `Some(0)` from `main` is equivalent to `std::process::exit(0)`.
+    //
+    // When no argument is given it returns `None` and we fall through to the
+    // normal GUI startup below.
+    //
+    // Note: `iced::Result` is `Result<(), iced::Error>`.  We convert the
+    // integer exit code by calling `std::process::exit` directly so that the
+    // process exits with the right code without printing an iced error.
+    if let Some(code) = cli::run_if_cli() {
+        std::process::exit(code);
+    }
+
+    // ── GUI mode (no CLI argument) ────────────────────────────────────────────
     iced::application(
         "Swim League Scheduler",  // window title
         SwimScheduler::update,    // update function (Elm-style reducer)
