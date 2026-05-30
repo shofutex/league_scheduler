@@ -9,6 +9,10 @@ using the [iced framework](https://iced.rs/) so that it can generate a cross-pla
 to run on a user's system. It can save and load the preferences as a JSON file (Claude said that 
 JSON is a better selection for Rust).
 
+This version also uses the [Inter font family](https://github.com/rsms/inter) for a cleaner cross-platform look. Rather than 
+import it into the codebase, there are some helper scripts that will download the latest copy from github and copy it into the 
+build folder.
+
 #### Usage
 I've updated everything so now it's available cross-platform through the github release. Getting it to run on MacOS is a bit difficult (you'll have to go through the steps to allow this untrusted binary to run), but it works.
 
