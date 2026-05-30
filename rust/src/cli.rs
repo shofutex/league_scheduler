@@ -4,32 +4,45 @@
 //!
 //! When the binary is invoked with a path argument it skips the iced GUI
 //! entirely, loads the `LeagueConfig` from the given JSON file, runs the
-//! combinatorial scheduler, and prints the ranked results to stdout in the
-//! same human-readable format used by the GUI's Export feature.
+//! combinatorial scheduler, and prints the ranked results to stdout.
 //!
 //! ## Usage
 //!
 //! ```text
-//! swim-scheduler [<config.json>]
+//! swim-scheduler [OPTIONS] <config.json>
+//! swim-scheduler              # (no args) launch the GUI
 //! ```
 //!
-//! - **No arguments** → launch the normal GUI (existing behaviour).
-//! - **One argument** → headless CLI mode.
-//!   - `--help` / `-h` → print usage and exit successfully.
-//!   - Any other value → treated as a path to a `LeagueConfig` JSON file.
+//! ## Options
+//!
+//! | Flag          | Effect                                              |
+//! |---------------|-----------------------------------------------------|
+//! | *(none)*      | Print results in the human-readable text format     |
+//! | `--csv`       | Print results as CSV (same format as "Export CSV")  |
+//! | `-h`/`--help` | Print usage and exit 0                              |
 //!
 //! ## Exit codes
 //!
-//! | Code | Meaning                                         |
-//! |------|-------------------------------------------------|
-//! | 0    | Success (results printed) or `--help` shown     |
-//! | 1    | File not found, JSON parse error, or no valid   |
-//! |      | schedules produced by the scheduler             |
+//! | Code | Meaning                                              |
+//! |------|------------------------------------------------------|
+//! | 0    | Results printed successfully, or `--help` shown      |
+//! | 1    | File not found, JSON parse error, bad arguments, or  |
+//! |      | no valid schedules produced by the scheduler         |
 
 use std::path::Path;
 
 use crate::config::LeagueConfig;
-use crate::scheduler::{run_scheduler_with_progress, format_results};
+use crate::scheduler::{run_scheduler_with_progress, format_results, format_results_csv};
+
+// ── Output format ─────────────────────────────────────────────────────────────
+
+/// Which output format to use when printing results.
+enum OutputFormat {
+    /// Human-readable text (default).
+    Text,
+    /// CSV matching the GUI's "Export CSV" output.
+    Csv,
+}
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
@@ -37,34 +50,67 @@ use crate::scheduler::{run_scheduler_with_progress, format_results};
 ///
 /// Returns `Some(exit_code)` if the program should exit after this call
 /// (CLI mode was detected and either succeeded or failed).
-/// Returns `None` if no CLI argument was supplied and the GUI should start
-/// normally.
-///
-/// Keeping the decision logic here — rather than inside `main` — makes it
-/// straightforward to unit-test without spawning a subprocess.
+/// Returns `None` if no arguments were supplied and the GUI should start.
 pub fn run_if_cli() -> Option<i32> {
     let args: Vec<String> = std::env::args().collect();
 
-    match args.get(1).map(String::as_str) {
-        // No argument: launch the GUI.
-        None => None,
+    // Collect flags and positional arguments separately so the order of
+    // `--csv` relative to the filename doesn't matter.
+    let mut flags: Vec<&str>     = vec![];
+    let mut positional: Vec<&str> = vec![];
 
-        // Help flags: print usage and exit cleanly.
-        Some("--help") | Some("-h") => {
-            print_usage(&args[0]);
-            Some(0)
+    for arg in args.iter().skip(1) {
+        if arg.starts_with('-') {
+            flags.push(arg.as_str());
+        } else {
+            positional.push(arg.as_str());
         }
+    }
 
-        // Anything else is treated as a file path.
-        Some(path) => Some(run_cli(path)),
+    // No arguments at all: launch the GUI.
+    if flags.is_empty() && positional.is_empty() {
+        return None;
+    }
+
+    // Help flag: print usage and exit cleanly regardless of other args.
+    if flags.contains(&"--help") || flags.contains(&"-h") {
+        print_usage(&args[0]);
+        return Some(0);
+    }
+
+    // Determine the output format.
+    let format = if flags.contains(&"--csv") {
+        OutputFormat::Csv
+    } else if flags.is_empty() {
+        OutputFormat::Text
+    } else {
+        // Unknown flag.
+        eprintln!("Unknown flag: {}", flags[0]);
+        eprintln!("Run `{} --help` for usage.", args[0]);
+        return Some(1);
+    };
+
+    // Exactly one positional argument expected: the config file path.
+    match positional.as_slice() {
+        [] => {
+            eprintln!("Error: no config file specified.");
+            eprintln!("Run `{} --help` for usage.", args[0]);
+            Some(1)
+        }
+        [path] => Some(run_cli(path, format)),
+        _ => {
+            eprintln!("Error: too many arguments.");
+            eprintln!("Run `{} --help` for usage.", args[0]);
+            Some(1)
+        }
     }
 }
 
 // ── CLI runner ────────────────────────────────────────────────────────────────
 
-/// Load `path`, run the scheduler, and print results.
+/// Load `path`, run the scheduler, and print results in `format`.
 /// Returns 0 on success, 1 on any error.
-fn run_cli(path: &str) -> i32 {
+fn run_cli(path: &str, format: OutputFormat) -> i32 {
     // ── Load & parse the JSON config ─────────────────────────────────────────
     let config = match load_config(path) {
         Ok(c)  => c,
@@ -128,7 +174,11 @@ fn run_cli(path: &str) -> i32 {
             1
         }
         Ok(solutions) => {
-            print!("{}", format_results(&solutions, &config.teams, &config.weeks));
+            let out = match format {
+                OutputFormat::Text => format_results(&solutions, &config.teams, &config.weeks),
+                OutputFormat::Csv  => format_results_csv(&solutions, &config.teams, &config.weeks),
+            };
+            print!("{}", out);
             0
         }
     }
@@ -139,12 +189,11 @@ fn run_cli(path: &str) -> i32 {
 /// Read a file and deserialise it as a `LeagueConfig`.
 fn load_config(path: &str) -> Result<LeagueConfig, String> {
     if !Path::new(path).exists() {
-        return Err(format!("file not found"));
+        return Err("file not found".into());
     }
     let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
-    serde_json::from_slice::<LeagueConfig>(&bytes).map_err(|e| {
-        format!("JSON parse error: {}", e)
-    })
+    serde_json::from_slice::<LeagueConfig>(&bytes)
+        .map_err(|e| format!("JSON parse error: {}", e))
 }
 
 // ── Help text ─────────────────────────────────────────────────────────────────
@@ -158,15 +207,18 @@ Arguments:
             When omitted, the graphical wizard launches instead.
 
 Options:
+  --csv        Print results as CSV instead of human-readable text.
+               Produces the same output as the GUI's \"Export CSV\" button.
   -h, --help   Print this help message and exit.
 
 Exit codes:
   0   Results printed successfully (or --help shown).
-  1   File not found, parse error, or no valid schedules found.
+  1   File not found, parse error, unknown flag, or no valid schedules found.
 
-Example:
-  {bin} league.json
-  {bin} league.json > schedules.txt",
+Examples:
+  {bin} league.json               # human-readable text
+  {bin} --csv league.json         # CSV to stdout
+  {bin} --csv league.json > schedules.csv",
         bin = bin
     );
 }

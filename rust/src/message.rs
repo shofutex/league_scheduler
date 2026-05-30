@@ -121,8 +121,8 @@ pub enum Message {
     // ── Export ───────────────────────────────────────────────────────────────
 
     /// Open a native save-file dialog and write all ranked schedules to a
-    /// plain-text `.txt` file.
-    ExportResults,
+    /// CSV file.
+    ExportCsv,
 
     /// Delivered after the async export completes (success or failure).
     ExportDone(Result<(), String>),

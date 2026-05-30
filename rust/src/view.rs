@@ -236,7 +236,7 @@ impl SwimScheduler {
     /// The Back button is disabled (no `on_press`) on the first step.
     /// The right-hand action button changes based on the current step:
     /// - Step 6 (ScoreExclusions) → "Run Scheduler →" (triggers the engine).
-    /// - Results → "Export Results".
+    /// - Results → "Export CSV".
     /// - All others → "Next →".
     fn view_nav(&self) -> Element<'_, Message> {
         let steps = Step::all();
@@ -262,8 +262,8 @@ impl SwimScheduler {
         // with no `on_press` is rendered in a visually muted style and receives
         // no pointer events — no separate "disabled" flag is needed.
         let right: Element<Message> = match self.current_step() {
-            Step::Results => button(text("Export Results"))
-                .on_press(Message::ExportResults)
+            Step::Results => button(text("Export CSV"))
+                .on_press(Message::ExportCsv)
                 .into(),
             Step::ScoreExclusions => button(text("Run Scheduler →"))
                 .on_press(Message::RunScheduler)

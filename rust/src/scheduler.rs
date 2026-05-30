@@ -634,3 +634,55 @@ pub fn format_results(solutions: &[Solution], teams: &[String], weeks: &[u32]) -
     out.push('\n');
     out
 }
+
+/// Format a ranked list of solutions as a CSV string.
+///
+/// This is the single source of truth for CSV output.  Both the GUI's
+/// "Export CSV" button (`Message::ExportResults` in `update.rs`) and the
+/// `--csv` CLI flag (`cli.rs`) call this function so the two outputs are
+/// always identical.
+///
+/// ## Schema
+///
+/// One header row followed by one data row per matchup per solution:
+///
+/// ```text
+/// rank,score,penalty,week,host,away,host_bye_week,away_bye_week
+/// 1,4,0,1,Marlins,Dolphins,3,5
+/// 1,4,0,1,Sharks,Rays,2,4
+/// …
+/// ```
+///
+/// Bye-week columns are left empty for 6-team schedules where no team
+/// sits out.  All values are written without quoting because team names
+/// that need quoting (containing commas or quotes) are rejected by the
+/// wizard's input validation.
+pub fn format_results_csv(solutions: &[Solution], teams: &[String], weeks: &[u32]) -> String {
+    let mut sorted_weeks = weeks.to_vec();
+    sorted_weeks.sort_unstable();
+
+    let mut out = String::from("rank,score,penalty,week,host,away,host_bye_week,away_bye_week\n");
+
+    for sol in solutions {
+        for &w in &sorted_weeks {
+            let Some(games) = sol.schedule.get(&w) else { continue };
+            for (host, away) in games {
+                let host_bye = sol.bye_assignment.get(host)
+                    .map(|w| w.to_string())
+                    .unwrap_or_default();
+                let away_bye = sol.bye_assignment.get(away)
+                    .map(|w| w.to_string())
+                    .unwrap_or_default();
+
+                out.push_str(&format!(
+                    "{},{},{},{},{},{},{},{}\n",
+                    sol.rank, sol.score, sol.penalty,
+                    w, host, away,
+                    host_bye, away_bye,
+                ));
+            }
+        }
+    }
+
+    out
+}

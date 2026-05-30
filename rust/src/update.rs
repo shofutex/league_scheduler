@@ -466,21 +466,21 @@ impl SwimScheduler {
             ///
             /// The output format is human-readable: one section per solution
             /// with bye-week assignments and a week-by-week match listing.
-            Message::ExportResults => {
+            Message::ExportCsv => {
                 let results = self.results.clone();
                 let weeks   = self.config.weeks.clone();
                 let teams   = self.config.teams.clone();
                 return Task::perform(
                     async move {
                         let path = rfd::AsyncFileDialog::new()
-                            .set_file_name("schedules.txt")
-                            .add_filter("Text", &["txt"])
+                            .set_file_name("schedules.csv")
+                            .add_filter("CSV", &["csv"])
                             .save_file()
                             .await;
                         match path {
                             None => Err("Cancelled".into()),
                             Some(p) => {
-                                let out = crate::scheduler::format_results(&results, &teams, &weeks);
+                                let out = crate::scheduler::format_results_csv(&results, &teams, &weeks);
                                 std::fs::write(p.path(), out).map_err(|e| e.to_string())
                             }
                         }
