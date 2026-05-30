@@ -1,4 +1,4 @@
-# league_scheduler
+# League Scheduler
 
 Tool to select bye weeks and generate a fair schdule for a 5- or 6-team swim league over (initially) a 5-week summer season.
 
