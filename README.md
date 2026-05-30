@@ -58,6 +58,8 @@ It seems to work, but this is one of those scenarios where it's easy to double-c
 ChatGPT hardcoded the team names and such so I edited it to work off league.yaml.
 I also cleaned up the code so it's more readable
 
+NOTE: The Python version hasn't been updated.
+
 #### Usage:
 Edit `league_example.yaml` and copy it into `league.yaml`
 ```bash
