@@ -12,6 +12,13 @@ JSON is a better selection for Rust).
 #### Usage
 I've updated everything so now it's available cross-platform through the github release. Getting it to run on MacOS is a bit difficult (you'll have to go through the steps to allow this untrusted binary to run), but it works.
 
+If you run from the command line with an option, it will not launch the gui:
+```
+$ ./swim-scheduler-linux [--csv] <json-file>
+```
+
+With out the --csv, it will print the text output just like the graphical interface and with the --csv it will print the CSV file.
+
 ##### On Linux:
 ```bash
 $ chmod u+x swim-scheduler-linux
@@ -35,14 +42,11 @@ It is set up as a wizard so you can enter in all the requirements:
 - If a team has a reason to *not* take a specific week as a bye-week, you can enter that as well
 - If you have a team whose fairness score should be ignored, you can toggle that too
 - You can save and load these configurations if you want to run it later
+- It exports a CSV
 
 There are some known issues:
-- Bye-weeks and preferences have not yet been tested with a 6-week schedule. The use-cases this was designed for do not have bye-weeks
+- Bye-weeks and preferences have not yet been fully tested with a 6-week schedule. The use-cases this was designed for do not have bye-weeks
 for the 6-team schedules.
-- Only 5-weeks have been tested, as the use-cases this was developed for are only 5-week long summer swim schedules
-- 6-team schedules can take a significant number of seconds to run (there are 720 permutations to test for the 6-team/5-week schedule).
-
-I need to set up a mechanism for exporting the findings to CSV.
 
 ### Python 
 Developed with the help of ChatGPT--which seems to account for the complex mappings.
